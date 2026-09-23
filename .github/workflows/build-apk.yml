@@ -1,10 +1,13 @@
 name: Build حساباتك APK
 
+# Trigger this manually from the "Actions" tab on GitHub (workflow_dispatch),
+# or automatically on every push to main. Either way, no Flutter/Android
+# Studio install is needed on your own machine — GitHub's servers do it.
 on:
   workflow_dispatch:
     inputs:
       api_base_url:
-        description: "Backend URL the app should call (e.g. your Render URL)"
+        description: "Backend URL the app should call (e.g. your ngrok https URL)"
         required: true
         default: "http://10.0.2.2:8000"
   push:
@@ -20,6 +23,10 @@ jobs:
         with:
           flutter-version: "3.24.0"
           channel: "stable"
+
+      - name: Generate missing Android platform scaffold
+        working-directory: mobile
+        run: flutter create --platforms=android --org com.hesabatak .
 
       - name: Install dependencies
         working-directory: mobile
