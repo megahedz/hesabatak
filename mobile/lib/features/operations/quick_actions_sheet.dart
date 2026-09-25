@@ -166,7 +166,7 @@ class _InvoiceFormState extends State<_InvoiceForm> {
                   style: const TextStyle(color: Colors.redAccent))
             else
               DropdownButtonFormField<int>(
-                initialValue: _selectedPartyId,
+                value: _selectedPartyId,
                 decoration: InputDecoration(labelText: _isSale ? 'العميل' : 'المورد', border: const OutlineInputBorder()),
                 items: _parties
                     .map((p) => DropdownMenuItem<int>(value: p['id'] as int, child: Text(p['name'] as String)))
@@ -302,7 +302,7 @@ class _PartyPaymentFormState extends State<_PartyPaymentForm> {
                 style: const TextStyle(color: Colors.redAccent))
           else
             DropdownButtonFormField<int>(
-              initialValue: _selectedPartyId,
+              value: _selectedPartyId,
               decoration: InputDecoration(labelText: _isCustomer ? 'العميل' : 'المورد', border: const OutlineInputBorder()),
               items: _parties
                   .map((p) => DropdownMenuItem<int>(value: p['id'] as int, child: Text(p['name'] as String)))
@@ -481,14 +481,14 @@ class _TransferFormState extends State<_TransferForm> {
           const Text('تحويل بين الحسابات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            initialValue: _fromCode,
+            value: _fromCode,
             decoration: const InputDecoration(labelText: 'من', border: OutlineInputBorder()),
             items: _accounts.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
             onChanged: (v) => setState(() => _fromCode = v!),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            initialValue: _toCode,
+            value: _toCode,
             decoration: const InputDecoration(labelText: 'إلى', border: OutlineInputBorder()),
             items: _accounts.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
             onChanged: (v) => setState(() => _toCode = v!),

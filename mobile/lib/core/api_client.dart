@@ -48,7 +48,7 @@ class ApiClient {
 
   // ---------------------------------------------------------------- dashboard
   Future<Map<String, dynamic>> getDashboard(int companyId) async {
-    return _get('/companies/$companyId/dashboard');
+    return (await _get('/companies/$companyId/dashboard')) as Map<String, dynamic>;
   }
 
   // ---------------------------------------------------------------- customers
@@ -71,7 +71,7 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> getCustomerStatement(int companyId, int customerId) async {
-    return _get('/companies/$companyId/customers/$customerId/statement');
+    return (await _get('/companies/$companyId/customers/$customerId/statement')) as Map<String, dynamic>;
   }
 
   // ---------------------------------------------------------------- suppliers
@@ -94,7 +94,7 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> getSupplierStatement(int companyId, int supplierId) async {
-    return _get('/companies/$companyId/suppliers/$supplierId/statement');
+    return (await _get('/companies/$companyId/suppliers/$supplierId/statement')) as Map<String, dynamic>;
   }
 
   // ---------------------------------------------------------------- operations
@@ -203,9 +203,12 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------- reports
-  Future<Map<String, dynamic>> getTrialBalance(int companyId) => _get('/companies/$companyId/reports/trial-balance');
-  Future<Map<String, dynamic>> getBalanceSheet(int companyId) => _get('/companies/$companyId/reports/balance-sheet');
-  Future<Map<String, dynamic>> getProfitAndLoss(int companyId) => _get('/companies/$companyId/reports/profit-and-loss');
+  Future<Map<String, dynamic>> getTrialBalance(int companyId) async =>
+      (await _get('/companies/$companyId/reports/trial-balance')) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> getBalanceSheet(int companyId) async =>
+      (await _get('/companies/$companyId/reports/balance-sheet')) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> getProfitAndLoss(int companyId) async =>
+      (await _get('/companies/$companyId/reports/profit-and-loss')) as Map<String, dynamic>;
 
   // ---------------------------------------------------------------- internals
   Future<dynamic> _get(String path) async {
