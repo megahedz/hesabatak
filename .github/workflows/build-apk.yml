@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       api_base_url:
-        description: "Backend URL the app should call (e.g. your ngrok https URL)"
+        description: "Backend URL the app should call (e.g. your Render URL)"
         required: true
         default: "http://10.0.2.2:8000"
   push:
@@ -31,6 +31,19 @@ jobs:
       - name: Install dependencies
         working-directory: mobile
         run: flutter pub get
+
+      - name: Generate app icon from assets/icon/icon.png
+        working-directory: mobile
+        run: dart run flutter_launcher_icons
+
+      - name: Set app display name to حساباتك
+        working-directory: mobile
+        # flutter create (above) regenerates AndroidManifest.xml fresh every
+        # run with a generic label, so the display name has to be patched
+        # back in after create but before build, every single time.
+        run: |
+          sed -i 's/android:label="[^"]*"/android:label="حساباتك"/' android/app/src/main/AndroidManifest.xml
+          grep android:label android/app/src/main/AndroidManifest.xml
 
       - name: Build release APK
         working-directory: mobile
