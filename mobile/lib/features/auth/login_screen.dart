@@ -49,8 +49,12 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = e.statusCode == 401
           ? 'رقم الهاتف أو كلمة المرور غير صحيحة'
           : (_isRegisterMode ? 'تعذر إنشاء الحساب. جرّب رقم هاتف آخر.' : 'تعذر تسجيل الدخول. حاول مرة أخرى.'));
-    } catch (_) {
-      setState(() => _error = 'تعذر الاتصال بالسيرفر. تأكد من تشغيله وحاول مرة أخرى.');
+    } catch (e) {
+      // TEMPORARY DEBUG: showing the real exception instead of a generic
+      // message so we can see exactly what's failing. Revert this to the
+      // friendly-only message once the bug is found (spec §49 normally
+      // forbids showing raw technical errors to the user).
+      setState(() => _error = 'تعذر الاتصال بالسيرفر.\n[DEBUG] ${e.toString()}');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -61,17 +65,24 @@ class _LoginScreenState extends State<LoginScreen> {
   /// onboarding — "ابدأ الآن" → إنشاء الشركة — folded into the login flow
   /// so a brand-new user doesn't hit a dead end after registering).
   Future<void> _resolveActiveCompany() async {
-    final companies = await _api.listMyCompanies();
-    if (companies.isNotEmpty) {
-      final first = companies.first as Map<String, dynamic>;
-      AppSession.instance.setActiveCompany(id: first['id'] as int, name: first['name'] as String);
-      return;
+    try {
+      final companies = await _api.listMyCompanies();
+      if (companies.isNotEmpty) {
+        final first = companies.first as Map<String, dynamic>;
+        AppSession.instance.setActiveCompany(id: first['id'] as int, name: first['name'] as String);
+        return;
+      }
+      if (!mounted) return;
+      final companyName = await _promptForCompanyName();
+      if (companyName == null || companyName.isEmpty) return;
+      final created = await _api.createCompany(name: companyName);
+      AppSession.instance.setActiveCompany(id: created['id'] as int, name: created['name'] as String);
+    } catch (e) {
+      // TEMPORARY DEBUG — see note above.
+      if (mounted) {
+        setState(() => _error = 'تعذر تجهيز الشركة.\n[DEBUG] ${e.toString()}');
+      }
     }
-    if (!mounted) return;
-    final companyName = await _promptForCompanyName();
-    if (companyName == null || companyName.isEmpty) return; // AppSession still has no company; screen just waits
-    final created = await _api.createCompany(name: companyName);
-    AppSession.instance.setActiveCompany(id: created['id'] as int, name: created['name'] as String);
   }
 
   Future<String?> _promptForCompanyName() {
@@ -139,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center),
+                  SelectableText(_error!, style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center),
                 ],
                 const SizedBox(height: 20),
                 FilledButton(
