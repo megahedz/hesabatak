@@ -14,6 +14,16 @@ class ApiClient {
 
   final String baseUrl;
 
+  /// Render's free tier can leave the service asleep after inactivity, so the
+  /// first request after a while may take noticeably longer than usual. Give
+  /// it a generous-but-bounded window instead of hanging forever.
+  static const _timeout = Duration(seconds: 45);
+
+  /// One silent retry for transient network failures (mobile networks drop
+  /// DNS/signal for a second all the time). Applied to network-level errors
+  /// only — never to HTTP error statuses, which are deterministic.
+  static const _maxAttempts = 2;
+
   Map<String, String> get _headers {
     final token = AppSession.instance.token;
     return token != null ? {'Authorization': 'Bearer $token'} : {};
@@ -28,9 +38,11 @@ class ApiClient {
   /// query params like the rest of the API, because FastAPI's
   /// OAuth2PasswordRequestForm expects application/x-www-form-urlencoded.
   Future<Map<String, dynamic>> login({required String phone, required String password}) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/auth/login'),
-      body: {'username': phone, 'password': password},
+    final res = await _send(
+      () => http.post(
+        Uri.parse('$baseUrl/auth/login'),
+        body: {'username': phone, 'password': password},
+      ),
     );
     _checkOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -212,7 +224,7 @@ class ApiClient {
 
   // ---------------------------------------------------------------- internals
   Future<dynamic> _get(String path) async {
-    final res = await http.get(Uri.parse('$baseUrl$path'), headers: _headers);
+    final res = await _send(() => http.get(Uri.parse('$baseUrl$path'), headers: _headers));
     _checkOk(res);
     return jsonDecode(res.body);
   }
@@ -222,12 +234,31 @@ class ApiClient {
   /// reflects that; it's true everywhere in this client except /auth/login,
   /// which needs a real form body for OAuth2PasswordRequestForm.
   Future<Map<String, dynamic>> _post(String path, Map<String, String> params, {required bool useQueryParams}) async {
-    final uri = useQueryParams
-        ? Uri.parse('$baseUrl$path').replace(queryParameters: params)
-        : Uri.parse('$baseUrl$path');
-    final res = await http.post(uri, headers: _headers);
+    final res = await _send(() {
+      final uri = useQueryParams
+          ? Uri.parse('$baseUrl$path').replace(queryParameters: params)
+          : Uri.parse('$baseUrl$path');
+      return http.post(uri, headers: _headers);
+    });
     _checkOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Wraps every HTTP call with a timeout and one retry on network-level
+  /// failures. Rethrows as [ApiNetworkException] so screens can show a single
+  /// friendly "no connection" message instead of a stack of socket details.
+  Future<http.Response> _send(Future<http.Response> Function() request) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
+      try {
+        return await request().timeout(_timeout);
+      } catch (e) {
+        // Only network-level failures reach here (HTTP statuses are checked
+        // in _checkOk, after _send returns) — exactly what we want to retry.
+        lastError = e;
+      }
+    }
+    throw ApiNetworkException(lastError);
   }
 
   void _checkOk(http.Response res) {
@@ -242,6 +273,13 @@ class ApiClient {
       throw ApiException(res.statusCode, res.body);
     }
   }
+}
+
+/// A network-level failure (DNS, timeout, socket…) after retries. Screens
+/// catch this and show one friendly message — never the raw exception.
+class ApiNetworkException implements Exception {
+  ApiNetworkException(this.cause);
+  final Object? cause;
 }
 
 class ApiException implements Exception {

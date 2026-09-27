@@ -22,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isRegisterMode = false;
   bool _loading = false;
   String? _error;
+  bool _isNetworkError = false;
 
   Future<void> _submit() async {
     final phone = _phoneController.text.trim();
@@ -33,6 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _isNetworkError = false;
     });
     try {
       final result = _isRegisterMode
@@ -49,12 +51,23 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = e.statusCode == 401
           ? 'رقم الهاتف أو كلمة المرور غير صحيحة'
           : (_isRegisterMode ? 'تعذر إنشاء الحساب. جرّب رقم هاتف آخر.' : 'تعذر تسجيل الدخول. حاول مرة أخرى.'));
+    } on ApiNetworkException {
+      // spec §49: never show raw socket/DNS details to the user. errno = 7
+      // ("No address associated with hostname") means the phone's network
+      // couldn't resolve the server's name — usually a mobile-network DNS
+      // hiccup, Private DNS, or a VPN/ad-blocker app. Point the user at the
+      // practical fixes instead of the exception text.
+      setState(() {
+        _isNetworkError = true;
+        _error = 'تعذر الاتصال بالسيرفر.\n'
+            'تأكد من اتصالك بالإنترنت وحاول مرة أخرى.\n'
+            'إن استمرت المشكلة، جرّب شبكة أخرى أو أوقف أي تطبيق VPN/حاجب إعلانات،'
+            ' واضبط «Private DNS» في إعدادات الشبكة على auto.';
+      });
     } catch (e) {
-      // TEMPORARY DEBUG: showing the real exception instead of a generic
-      // message so we can see exactly what's failing. Revert this to the
-      // friendly-only message once the bug is found (spec §49 normally
-      // forbids showing raw technical errors to the user).
-      setState(() => _error = 'تعذر الاتصال بالسيرفر.\n[DEBUG] ${e.toString()}');
+      setState(() => _error = _isRegisterMode
+          ? 'تعذر إنشاء الحساب. جرّب رقم هاتف آخر.'
+          : 'تعذر تسجيل الدخول. حاول مرة أخرى.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -77,10 +90,13 @@ class _LoginScreenState extends State<LoginScreen> {
       if (companyName == null || companyName.isEmpty) return;
       final created = await _api.createCompany(name: companyName);
       AppSession.instance.setActiveCompany(id: created['id'] as int, name: created['name'] as String);
-    } catch (e) {
-      // TEMPORARY DEBUG — see note above.
+    } on ApiNetworkException {
       if (mounted) {
-        setState(() => _error = 'تعذر تجهيز الشركة.\n[DEBUG] ${e.toString()}');
+        setState(() => _error = 'تعذر الاتصال بالسيرفر. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'تعذر تجهيز الشركة. حاول مرة أخرى.');
       }
     }
   }
@@ -159,6 +175,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : Text(_isRegisterMode ? 'إنشاء حساب' : 'تسجيل الدخول'),
                 ),
+                if (_isNetworkError && !_loading) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _submit,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('إعادة المحاولة'),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: _loading ? null : () => setState(() => _isRegisterMode = !_isRegisterMode),

@@ -4,7 +4,11 @@ import 'core/session.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_shell.dart';
 
-void main() {
+Future<void> main() async {
+  // Must run before runApp: restoring the session is async, and the first
+  // frame decides between login screen and HomeShell based on its result.
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppSession.instance.restore();
   runApp(const HesabatakApp());
 }
 

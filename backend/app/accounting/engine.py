@@ -305,6 +305,25 @@ class AccountingService:
         )
 
     # ------------------------------------------------------------------
+    # Opening stock (spec §71 assumption): goods the owner starts the
+    # business with are treated as an owner contribution —
+    #   Inventory Dr / Owner Capital Cr
+    # so the Balance Sheet balances from day one.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def create_opening_stock(db: Session, *, company_id: int, entry_date: date,
+                              amount: Decimal, description: str = "مخزون افتتاحي") -> JournalEntry:
+        amount = money(amount)
+        return AccountingService._post(
+            db, company_id=company_id, entry_date=entry_date, reference_type="opening_stock",
+            description=description,
+            lines=[
+                Line(account_code=SystemAccountCode.INVENTORY.value, debit=amount),
+                Line(account_code=SystemAccountCode.OWNER_CAPITAL.value, credit=amount),
+            ],
+        )
+
+    # ------------------------------------------------------------------
     # Transfer between own accounts (spec §17) — never Revenue/Expense.
     # ------------------------------------------------------------------
     @staticmethod

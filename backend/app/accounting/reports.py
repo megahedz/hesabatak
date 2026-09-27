@@ -2,8 +2,11 @@
 Reports read ONLY from journal_entries / journal_entry_lines (spec §75:
 "Journal Entries are the accounting data; invoices are operational data").
 None of these functions look at sales_invoices, payments, etc. directly for
-totals — which is exactly what guarantees P&L, Balance Sheet, and Trial
-Balance can never silently drift out of sync with each other.
+totals — which is exactly what guarantees P&L, Balance Sheet, Trial Balance,
+General Ledger, Cash Flow and the VAT report can never silently drift apart.
+
+Customer/Supplier statements live in app/accounting/statements.py (they are
+party documents, not ledger reports) — main.py imports them from there.
 """
 from dataclasses import dataclass
 from datetime import date
@@ -13,7 +16,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.accounts import Account, AccountType, AccountNature
+from app.models.accounts import Account, AccountType, AccountNature, SystemAccountCode
 from app.models.journal import JournalEntry, JournalEntryLine
 
 
@@ -57,6 +60,17 @@ def get_account_balances(db: Session, company_id: int, as_of: Optional[date] = N
     ]
 
 
+def _get_account(db: Session, company_id: int, account_code: str) -> Account:
+    account = (
+        db.query(Account)
+        .filter(Account.company_id == company_id, Account.code == account_code)
+        .one_or_none()
+    )
+    if account is None:
+        raise ValueError(f"Account {account_code} not found for company {company_id}")
+    return account
+
+
 def trial_balance(db: Session, company_id: int, as_of: Optional[date] = None) -> dict:
     """spec §21: every account with Dr/Cr/Balance, and Total Debit must equal Total Credit."""
     balances = get_account_balances(db, company_id, as_of)
@@ -75,9 +89,9 @@ def profit_and_loss(db: Session, company_id: int, start: Optional[date] = None,
                      end: Optional[date] = None) -> dict:
     """
     spec §19: Revenue - COGS = Gross Profit; Gross Profit - Operating Expenses = Net Profit.
-    NOTE: current implementation reads cumulative balances up to `end` (and, if `start`
-    is given, subtracts balances up to the day before `start`) so it works whether or
-    not journal_entries are period-closed — a real period filter on JournalEntry.entry_date.
+    Reads cumulative balances up to `end` (and, if `start` is given, subtracts balances
+    up to the day before `start`) so it works whether or not journal_entries are
+    period-closed.
     """
     balances_end = get_account_balances(db, company_id, as_of=end)
 
@@ -131,79 +145,223 @@ def balance_sheet(db: Session, company_id: int, as_of: Optional[date] = None) ->
     }
 
 
+# ----------------------------------------------------------------------
+# General Ledger (spec §22)
+# ----------------------------------------------------------------------
 @dataclass
-class StatementLine:
+class LedgerLine:
+    entry_id: int
     entry_date: date
-    description: str
     reference_type: str
-    debit: Decimal    # increases what they owe you (customer) / you owe them (supplier)
-    credit: Decimal   # decreases it
-    running_balance: Decimal
+    description: str
+    debit: Decimal
+    credit: Decimal
+    running_balance: Decimal   # signed in the account's normal-balance direction
 
 
-def customer_statement(db: Session, company_id: int, customer_id: int) -> dict:
+def general_ledger(db: Session, company_id: int, account_code: str,
+                   start: Optional[date] = None, end: Optional[date] = None) -> dict:
     """
-    كشف حساب عميل — opening balance + every AR movement tied to this
-    customer_id, in date order, with a running balance (spec §23).
-    Reads only journal_entry_lines, so it can never disagree with the AR
-    total on the Trial Balance / Balance Sheet.
+    دفتر الأستاذ لحساب واحد: رصيد افتتاحي + كل حركة بالترتيب الزمني مع رصيد
+    متحرك. المصدر: journal_entry_lines فقط — نفس مصدر كل التقارير (spec §75)،
+    فلا يمكن أن يختلف عن ميزان المراجعة أبدًا.
     """
-    from app.models.parties import Customer
-    customer = (
-        db.query(Customer)
-        .filter(Customer.id == customer_id, Customer.company_id == company_id)
-        .one_or_none()
-    )
-    if customer is None:
-        raise ValueError(f"Customer {customer_id} not found for company {company_id}")
+    account = _get_account(db, company_id, account_code)
+    is_debit_nature = account.account_type.nature == AccountNature.DEBIT
 
-    rows = (
+    def signed(debit: Decimal, credit: Decimal) -> Decimal:
+        return debit - credit if is_debit_nature else credit - debit
+
+    base_q = (
         db.query(JournalEntryLine, JournalEntry)
         .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
-        .filter(JournalEntryLine.customer_id == customer_id, JournalEntry.company_id == company_id)
-        .order_by(JournalEntry.entry_date, JournalEntry.id)
-        .all()
+        .filter(JournalEntryLine.account_id == account.id,
+                JournalEntry.company_id == company_id)
     )
 
-    opening = Decimal(customer.opening_balance or 0)
+    def period_window(q, s, e):
+        if s is not None:
+            q = q.filter(JournalEntry.entry_date >= s)
+        if e is not None:
+            q = q.filter(JournalEntry.entry_date <= e)
+        return q
+
+    opening = Decimal("0.00")
+    if start is not None:
+        from datetime import timedelta
+        before = period_window(base_q, None, start - timedelta(days=1))
+        od, oc = before.with_entities(
+            func.coalesce(func.sum(JournalEntryLine.debit), 0),
+            func.coalesce(func.sum(JournalEntryLine.credit), 0),
+        ).one()
+        opening = signed(Decimal(od), Decimal(oc))
+
+    rows_q = period_window(base_q, start, end).order_by(JournalEntry.entry_date, JournalEntry.id)
+    lines: list[LedgerLine] = []
     running = opening
-    lines = []
-    for line, entry in rows:
-        running += line.debit - line.credit
-        lines.append(StatementLine(
-            entry_date=entry.entry_date, description=entry.description,
-            reference_type=entry.reference_type, debit=Decimal(line.debit),
-            credit=Decimal(line.credit), running_balance=running,
+    total_debit = Decimal("0.00")
+    total_credit = Decimal("0.00")
+    for line, entry in rows_q.all():
+        debit, credit = Decimal(line.debit), Decimal(line.credit)
+        total_debit += debit
+        total_credit += credit
+        running += signed(debit, credit)
+        lines.append(LedgerLine(
+            entry_id=entry.id, entry_date=entry.entry_date,
+            reference_type=entry.reference_type, description=entry.description,
+            debit=debit, credit=credit, running_balance=running,
         ))
-    return {"customer_id": customer_id, "customer_name": customer.name,
-            "opening_balance": opening, "closing_balance": running, "lines": lines}
+
+    return {
+        "account_code": account.code,
+        "account_name": account.name_ar,
+        "opening_balance": opening,
+        "total_debit": total_debit,
+        "total_credit": total_credit,
+        "closing_balance": running,
+        "lines": lines,
+    }
 
 
-def supplier_statement(db: Session, company_id: int, supplier_id: int) -> dict:
-    """كشف حساب مورد — same idea as customer_statement, for Accounts Payable."""
-    from app.models.customers_supplier_helper import _supplier_or_404
-    supplier = _supplier_or_404(db, company_id, supplier_id)
+# ----------------------------------------------------------------------
+# Cash Flow (spec §38) — direct method, from the Cash (1100) + Bank (1200)
+# ledger accounts themselves.
+# ----------------------------------------------------------------------
+CASH_ACCOUNT_CODES = [SystemAccountCode.CASH.value, SystemAccountCode.BANK.value]
 
-    rows = (
+
+def cash_flow(db: Session, company_id: int, start: Optional[date] = None,
+              end: Optional[date] = None) -> dict:
+    """
+    حركة النقدية: رصيد الخزينة+البنك قبل الفترة، الوارد، الصادر، وصافي التغير،
+    مع تفصيل لكل نوع عملية (بيع/شراء/قبض/...). يُقرأ من قيود حسابات النقد
+    مباشرة — فالنقد في دفتر الأستاذ هو الحقيقة الوحيدة.
+    """
+    cash_ids = [
+        a.id for a in db.query(Account).filter(
+            Account.company_id == company_id,
+            Account.code.in_(CASH_ACCOUNT_CODES),
+        ).all()
+    ]
+    zero = Decimal("0.00")
+    if not cash_ids:
+        return {"opening": zero, "inflow": zero, "outflow": zero, "net": zero,
+                "closing": zero, "by_reference": []}
+
+    base_q = (
         db.query(JournalEntryLine, JournalEntry)
         .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
-        .filter(JournalEntryLine.supplier_id == supplier_id, JournalEntry.company_id == company_id)
-        .order_by(JournalEntry.entry_date, JournalEntry.id)
-        .all()
+        .filter(JournalEntryLine.account_id.in_(cash_ids),
+                JournalEntry.company_id == company_id)
     )
 
-    opening = Decimal(supplier.opening_balance or 0)
-    running = opening
-    lines = []
-    for line, entry in rows:
-        running += line.credit - line.debit  # AP normal balance is credit-side
-        lines.append(StatementLine(
-            entry_date=entry.entry_date, description=entry.description,
-            reference_type=entry.reference_type, debit=Decimal(line.debit),
-            credit=Decimal(line.credit), running_balance=running,
-        ))
-    return {"supplier_id": supplier_id, "supplier_name": supplier.name,
-            "opening_balance": opening, "closing_balance": running, "lines": lines}
+    def sums(q):
+        d, c = q.with_entities(
+            func.coalesce(func.sum(JournalEntryLine.debit), 0),
+            func.coalesce(func.sum(JournalEntryLine.credit), 0),
+        ).one()
+        return Decimal(d), Decimal(c)
+
+    opening_d = opening_c = zero
+    if start is not None:
+        opening_d, opening_c = sums(base_q.filter(JournalEntry.entry_date < start))
+    opening = opening_d - opening_c
+
+    period_q = base_q
+    if start is not None:
+        period_q = period_q.filter(JournalEntry.entry_date >= start)
+    if end is not None:
+        period_q = period_q.filter(JournalEntry.entry_date <= end)
+
+    inflow_d, outflow_c = sums(period_q)
+    inflow, outflow = inflow_d, outflow_c
+
+    by_reference = [
+        {"reference_type": ref, "inflow": Decimal(d), "outflow": Decimal(c)}
+        for ref, d, c in (
+            period_q.with_entities(
+                JournalEntry.reference_type,
+                func.coalesce(func.sum(JournalEntryLine.debit), 0),
+                func.coalesce(func.sum(JournalEntryLine.credit), 0),
+            ).group_by(JournalEntry.reference_type).all()
+        )
+    ]
+
+    net = inflow - outflow
+    return {
+        "opening": opening,
+        "inflow": inflow,
+        "outflow": outflow,
+        "net": net,
+        "closing": opening + net,
+        "by_reference": sorted(by_reference, key=lambda r: -(r["inflow"] + r["outflow"])),
+    }
+
+
+# ----------------------------------------------------------------------
+# VAT report (spec §33) — Output VAT liability (2150) vs Input VAT asset
+# (1350), period movements straight from the ledger.
+# ----------------------------------------------------------------------
+def vat_report(db: Session, company_id: int, start: Optional[date] = None,
+               end: Optional[date] = None) -> dict:
+    """
+    ضريبة القيمة المضافة: المحصّل على المبيعات (حساب 2150) مقابل المدفوع على
+    المشتريات (حساب 1350)، والصافي المستحق للجهة الضريبية = المحصّل - المدفوع.
+    الحركات محسوبة من حركة الحسابين في الفترة نفسها التي يحسب فيها قيد البيع
+    / الشراء ضريبة القيمة المضافة — لا يوجد مصدر ثانٍ لرقم الضريبة.
+    """
+    zero = Decimal("0.00")
+
+    def period_sums(code: str):
+        account = (
+            db.query(Account)
+            .filter(Account.company_id == company_id, Account.code == code)
+            .one_or_none()
+        )
+        if account is None:
+            return zero, zero, zero, zero
+        q = (
+            db.query(JournalEntryLine, JournalEntry)
+            .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
+            .filter(JournalEntryLine.account_id == account.id,
+                    JournalEntry.company_id == company_id)
+        )
+        opening_d = opening_c = zero
+        if start is not None:
+            from datetime import timedelta
+            od, oc = (
+                q.filter(JournalEntry.entry_date < start)
+                .with_entities(
+                    func.coalesce(func.sum(JournalEntryLine.debit), 0),
+                    func.coalesce(func.sum(JournalEntryLine.credit), 0),
+                ).one()
+            )
+            opening_d, opening_c = Decimal(od), Decimal(oc)
+        pq = q
+        if start is not None:
+            pq = pq.filter(JournalEntry.entry_date >= start)
+        if end is not None:
+            pq = pq.filter(JournalEntry.entry_date <= end)
+        pd, pc = (
+            pq.with_entities(
+                func.coalesce(func.sum(JournalEntryLine.debit), 0),
+                func.coalesce(func.sum(JournalEntryLine.credit), 0),
+            ).one()
+        )
+        return opening_d, opening_c, Decimal(pd), Decimal(pc)
+
+    # Output VAT (2150): credit-nature. Collected in period = credits - debits.
+    _, _, o_debit, o_credit = period_sums(SystemAccountCode.OUTPUT_VAT_PAYABLE.value)
+    output_collected = o_credit - o_debit
+    # Input VAT (1350): debit-nature. Paid in period = debits - credits.
+    _, _, i_debit, i_credit = period_sums(SystemAccountCode.INPUT_VAT_RECEIVABLE.value)
+    input_paid = i_debit - i_credit
+
+    return {
+        "output_vat_collected": output_collected,
+        "input_vat_paid": input_paid,
+        "net_vat_due": output_collected - input_paid,   # >0: owe authority; <0: reclaim
+    }
 
 
 def party_ledger_balance(db: Session, company_id: int, account_code: str) -> Decimal:
