@@ -9,7 +9,7 @@ on:
       api_base_url:
         description: "Backend URL the app should call (e.g. your Render URL)"
         required: true
-        default: "http://10.0.2.2:8000"
+        default: "https://hesabatak-backend-srps.onrender.com"
   push:
     branches: [main]
 
@@ -49,7 +49,7 @@ jobs:
         working-directory: mobile
         run: >
           flutter build apk --release
-          --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'http://10.0.2.2:8000' }}
+          --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://hesabatak-backend-srps.onrender.com' }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
