@@ -16,6 +16,13 @@ dependencies:
   intl: ^0.19.0
   characters: ^1.3.0
   flutter_secure_storage: ^9.2.2  # Phase 5: persistent session (Android Keystore)
+  # Phase 6: offline-first + backup/export (spec §42/§43, §39/§40, §59)
+  sqflite: ^2.3.0                # local cache + sync queue (pure Dart API)
+  path: ^1.9.0
+  connectivity_plus: ^6.0.3      # online/offline banner + auto-flush trigger
+  share_plus: ^10.0.2            # share/download backup & export files
+  file_picker: ^8.0.3            # pick a backup file for restore
+  path_provider: ^2.1.2          # temp dir for shared export/backup files
   # sqlite/drift + connectivity/sync packages are added in Phase 2 once
   # offline-first sync (spec §42) is implemented.
 

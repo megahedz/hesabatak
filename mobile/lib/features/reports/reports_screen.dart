@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
+import 'export_service.dart';
 
 /// التقارير (spec §38). Phase 3 scope: the three reports that read directly
 /// off the accounting engine (already fully working server-side). The rest
@@ -21,7 +22,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
 
   @override
@@ -37,7 +38,12 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
         title: const Text('التقارير'),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: const [
+            Tab(text: 'المبيعات'),
+            Tab(text: 'المشتريات'),
+            Tab(text: 'المخزون'),
             Tab(text: 'ميزان المراجعة'),
             Tab(text: 'الميزانية'),
             Tab(text: 'الأرباح والخسائر'),
@@ -46,8 +52,173 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [_TrialBalanceTab(api: _api), _BalanceSheetTab(api: _api), _ProfitLossTab(api: _api)],
+        children: [
+          _SalesTab(api: _api),
+          _PurchasesTab(api: _api),
+          _InventoryTab(api: _api),
+          _TrialBalanceTab(api: _api),
+          _BalanceSheetTab(api: _api),
+          _ProfitLossTab(api: _api),
+        ],
       ),
+    );
+  }
+}
+
+// ======================================================================
+// Phase 6: detailed reports (sales / purchases / inventory) + export
+// ======================================================================
+class _SalesTab extends StatelessWidget {
+  const _SalesTab({required this.api});
+  final ApiClient api;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DetailedReportList(
+      api: api,
+      futureFactory: api.getSalesReport,
+      exportKey: 'sales',
+      emptyText: 'لا توجد فواتير بيع بعد — سجّل أول عملية بيع من الرئيسية',
+      rowBuilder: (context, r) {
+        final total = double.parse(r['total'] as String);
+        return ListTile(
+          title: Text(r['customer_name'] as String? ?? 'عميل نقدي'),
+          subtitle: Text('${r['invoice_number']} — ${r['invoice_date']}'
+              '${(r['is_credit'] as bool) ? ' — آجل' : ''}'),
+          trailing: Text('${fmtAr.format(total)} ج.م',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+        );
+      },
+    );
+  }
+}
+
+class _PurchasesTab extends StatelessWidget {
+  const _PurchasesTab({required this.api});
+  final ApiClient api;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DetailedReportList(
+      api: api,
+      futureFactory: api.getPurchasesReport,
+      exportKey: 'purchases',
+      emptyText: 'لا توجد فواتير شراء بعد — سجّل أول عملية شراء من الرئيسية',
+      rowBuilder: (context, r) {
+        final total = double.parse(r['total'] as String);
+        return ListTile(
+          title: Text(r['supplier_name'] as String? ?? 'مورد نقدي'),
+          subtitle: Text('${r['invoice_number']} — ${r['invoice_date']}'
+              '${(r['is_credit'] as bool) ? ' — آجل' : ''}'),
+          trailing: Text('${fmtAr.format(total)} ج.م',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+        );
+      },
+    );
+  }
+}
+
+class _InventoryTab extends StatelessWidget {
+  const _InventoryTab({required this.api});
+  final ApiClient api;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DetailedReportList(
+      api: api,
+      futureFactory: api.getInventoryReport,
+      exportKey: 'inventory',
+      emptyText: 'لا توجد منتجات بعد',
+      rowBuilder: (context, r) {
+        final stock = double.parse(r['current_stock'] as String);
+        final value = double.parse(r['stock_value'] as String);
+        final isOut = r['is_out'] as bool;
+        final isLow = r['is_low'] as bool;
+        final sku = r['sku'] as String?;
+        final title = sku == null || sku.isEmpty ? (r['name'] as String) : '${r['name']} ($sku)';
+        final statusColor = isOut ? Colors.red : (isLow ? Colors.orange : Colors.green);
+        final statusText = isOut ? 'نفد' : (isLow ? 'منخفض' : 'متوفر');
+        return ListTile(
+          title: Text(title),
+          subtitle: Text('الرصيد: ${fmtAr.format(stock)} ${r['unit']} — القيمة: ${fmtAr.format(value)} ج.م'),
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
+        );
+      },
+    );
+  }
+}
+
+final fmtAr = NumberFormat.decimalPattern('ar_EG');
+
+class _DetailedReportList extends StatelessWidget {
+  const _DetailedReportList({
+    required this.api,
+    required this.futureFactory,
+    required this.exportKey,
+    required this.emptyText,
+    required this.rowBuilder,
+  });
+
+  final ApiClient api;
+  final Future<Map<String, dynamic>> Function(int) futureFactory;
+  final String exportKey;
+  final String emptyText;
+  final Widget Function(BuildContext, Map<String, dynamic>) rowBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: futureFactory(AppConfig.companyId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('تعذر تحميل التقرير — تأكد من الاتصال وحاول مرة أخرى.'));
+        }
+        final data = snapshot.data!;
+        final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
+        final totals = data['totals'] as Map<String, dynamic>;
+        final totalLabel = totals['total'] != null ? 'الإجمالي' : 'قيمة المخزون';
+        final totalValue = totals['total'] ?? totals['stock_value'];
+        return Column(
+          children: [
+            Container(
+              width: double.infinity,
+              color: const Color(0xFF0F6E5C).withOpacity(0.08),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('$totalLabel: ${fmtAr.format(double.parse(totalValue as String))} ج.م',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F6E5C))),
+                  TextButton.icon(
+                    onPressed: () => shareReportExport(context, exportKey),
+                    icon: const Icon(Icons.ios_share, size: 16),
+                    label: const Text('تصدير'),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: rows.isEmpty
+                  ? Center(child: Text(emptyText, textAlign: TextAlign.center))
+                  : ListView.separated(
+                      itemCount: rows.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, i) => rowBuilder(context, rows[i]),
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

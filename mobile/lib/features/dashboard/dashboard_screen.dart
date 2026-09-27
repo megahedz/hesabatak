@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/session.dart';
 import '../operations/quick_actions_sheet.dart';
+import '../reports/export_service.dart';
 import 'dashboard_model.dart';
 
 /// The حساباتك home screen. Cards and wording match exactly what was
@@ -38,6 +40,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('حساباتك'),
         actions: [
+          IconButton(
+            tooltip: 'النسخ الاحتياطي والاستعادة',
+            icon: const Icon(Icons.settings_backup_restore),
+            onPressed: () => showBackupSheet(context),
+          ),
           IconButton(
             tooltip: 'تسجيل الخروج',
             icon: const Icon(Icons.logout),
@@ -200,5 +207,127 @@ class _ErrorState extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ======================================================================
+// Phase 6: backup & restore (spec §59/§60)
+// ======================================================================
+
+/// Bottom sheet with: download a full backup (JSON, shareable anywhere),
+/// and restore from a previously saved backup file (replace mode, with a
+/// typed confirmation because it overwrites everything).
+Future<void> showBackupSheet(BuildContext context) async {
+  final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
+  await showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('النسخ الاحتياطي والاستعادة',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text('خذ نسخة كاملة من بيانات مشروعك، أو استعد نسخة سابقة. الاستعادة تستبدل كل البيانات الحالية.',
+                style: TextStyle(color: Colors.black54, fontSize: 13)),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('تنزيل نسخة احتياطية'),
+              onPressed: () async {
+                Navigator.of(sheetContext).pop();
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  messenger.showSnackBar(const SnackBar(content: Text('جارٍ تجهيز النسخة الاحتياطية…')));
+                  final file = await api.downloadBackup();
+                  if (!context.mounted) return;
+                  await shareBackupFile(context, file.bytes, file.fileName);
+                } on ApiNetworkException {
+                  messenger.showSnackBar(const SnackBar(
+                      content: Text('تعذر تنزيل النسخة. تأكد من الاتصال وحاول مرة أخرى.')));
+                } catch (_) {
+                  messenger.showSnackBar(const SnackBar(
+                      content: Text('تعذر تنزيل النسخة الاحتياطية. حاول مرة أخرى.')));
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.restore),
+              label: const Text('استعادة من ملف'),
+              onPressed: () async {
+                Navigator.of(sheetContext).pop();
+                await _restoreFromPicker(context, api);
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _restoreFromPicker(BuildContext context, ApiClient api) async {
+  final picked = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['json'],
+    withData: true,
+  );
+  if (picked == null || picked.files.single.bytes == null) return;
+  if (!context.mounted) return;
+
+  // Replace mode is destructive — require an explicit typed confirmation.
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      final controller = TextEditingController();
+      return AlertDialog(
+        title: const Text('تأكيد الاستعادة'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('سيتم استبدال كل بيانات المشروع الحالية ببيانات النسخة الاحتياطية. لا يمكن التراجع عن هذه الخطوة.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.text,
+              decoration: const InputDecoration(
+                labelText: 'اكتب «استعادة» للتأكيد',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim() == 'استعادة'),
+            child: const Text('استعادة'),
+          ),
+        ],
+      );
+    },
+  );
+  if (confirmed != true || !context.mounted) return;
+
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await api.restoreBackup(picked.files.single.bytes!);
+    messenger.showSnackBar(const SnackBar(content: Text('تمت الاستعادة بنجاح')));
+  } on ApiException catch (e) {
+    messenger.showSnackBar(SnackBar(
+        content: Text(e.statusCode == 400
+            ? 'الملف غير صالح للاستعادة — تأكد أنه نسخة احتياطية من حساباتك.'
+            : 'تعذرت الاستعادة. حاول مرة أخرى.')));
+  } on ApiNetworkException {
+    messenger.showSnackBar(const SnackBar(
+        content: Text('تعذر الاتصال بالسيرفر. تأكد من اتصالك وحاول مرة أخرى.')));
+  } catch (_) {
+    messenger.showSnackBar(const SnackBar(content: Text('تعذرت الاستعادة. حاول مرة أخرى.')));
   }
 }

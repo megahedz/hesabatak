@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Enum, Date
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Enum, Date, UniqueConstraint
 from .base import Base, TimestampMixin, CompanyScopedMixin
 
 
@@ -17,7 +17,10 @@ class SalesInvoice(Base, TimestampMixin, CompanyScopedMixin):
     __tablename__ = "sales_invoices"
 
     id = Column(Integer, primary_key=True)
-    invoice_number = Column(String(30), nullable=False, unique=True)  # e.g. INV-000001, spec §32
+    # Numbered per company (INV-000001 restarts in every company) — unique
+    # WITHIN the company, not globally (two companies legitimately have the
+    # same sequence; a global unique() would make the second company crash).
+    invoice_number = Column(String(30), nullable=False)  # e.g. INV-000001, spec §32
     invoice_date = Column(Date, nullable=False)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)  # null allowed only for cash sales
     payment_method = Column(Enum(PaymentMethod), nullable=False)
@@ -28,6 +31,10 @@ class SalesInvoice(Base, TimestampMixin, CompanyScopedMixin):
     total = Column(Numeric(18, 2), nullable=False)
     status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.CONFIRMED)
     journal_entry_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "invoice_number", name="uq_sales_invoice_number_per_company"),
+    )
 
 
 class SalesInvoiceItem(Base, TimestampMixin):
@@ -47,7 +54,7 @@ class PurchaseInvoice(Base, TimestampMixin, CompanyScopedMixin):
     __tablename__ = "purchase_invoices"
 
     id = Column(Integer, primary_key=True)
-    invoice_number = Column(String(30), nullable=False, unique=True)  # e.g. PUR-000001
+    invoice_number = Column(String(30), nullable=False)  # e.g. PUR-000001, unique per company
     invoice_date = Column(Date, nullable=False)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     payment_method = Column(Enum(PaymentMethod), nullable=False)
@@ -57,6 +64,10 @@ class PurchaseInvoice(Base, TimestampMixin, CompanyScopedMixin):
     total = Column(Numeric(18, 2), nullable=False)
     status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.CONFIRMED)
     journal_entry_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "invoice_number", name="uq_purchase_invoice_number_per_company"),
+    )
 
 
 class PurchaseInvoiceItem(Base, TimestampMixin):

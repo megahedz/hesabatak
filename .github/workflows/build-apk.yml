@@ -28,6 +28,18 @@ jobs:
         working-directory: mobile
         run: flutter create --platforms=android --org com.hesabatak .
 
+      # flutter create (Flutter 3.24.0) stamps Kotlin Gradle plugin 1.7.10 into
+      # android/settings.gradle, but flutter_secure_storage pulls in
+      # kotlin-stdlib 1.9.24 whose 1.9.0 metadata the 1.7.10 compiler cannot
+      # read -> ":app:compileReleaseKotlin" fails with "Module was compiled
+      # with an incompatible version of Kotlin". Bump the plugin so the
+      # compiler can read the stdlib's metadata.
+      - name: Bump Kotlin Gradle plugin to 1.9.24
+        working-directory: mobile
+        run: |
+          sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle
+          grep 'org.jetbrains.kotlin.android' android/settings.gradle
+
       - name: Install dependencies
         working-directory: mobile
         run: flutter pub get

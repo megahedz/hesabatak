@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'core/local_store.dart';
 import 'core/session.dart';
+import 'core/sync_manager.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_shell.dart';
 
@@ -9,6 +11,13 @@ Future<void> main() async {
   // frame decides between login screen and HomeShell based on its result.
   WidgetsFlutterBinding.ensureInitialized();
   await AppSession.instance.restore();
+  // Phase 6: local cache + sync queue must exist before any screen can
+  // render from cache or enqueue an offline write. Failures here must never
+  // block the app — it just runs online-only.
+  try {
+    await LocalStore.instance.db;
+    await SyncManager.instance.start();
+  } catch (_) {}
   runApp(const HesabatakApp());
 }
 

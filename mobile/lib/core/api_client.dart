@@ -1,14 +1,17 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'local_store.dart';
 import 'session.dart';
+import 'sync_manager.dart';
 
 /// Thin HTTP client for the حساباتك backend. Every request automatically
 /// carries the logged-in user's token (from AppSession) if one is set —
 /// screens never touch headers themselves.
 ///
-/// Phase 5 note: once offline-first (spec §42) lands, this class stays the
-/// same shape but every write first goes into a local Drift "sync_queue"
-/// table and this client is only called by the sync worker.
+/// Phase 6 offline-first (spec §42/§43): every successful GET is cached in
+/// [LocalStore], and `_get` falls back to that cache on network failure.
+/// `_post` funnels through [sendQueued]; the offline path enqueues instead
+/// of throwing, and SyncManager replays the queue FIFO when back online.
 class ApiClient {
   ApiClient({required this.baseUrl});
 
@@ -60,7 +63,7 @@ class ApiClient {
 
   // ---------------------------------------------------------------- dashboard
   Future<Map<String, dynamic>> getDashboard(int companyId) async {
-    return (await _get('/companies/$companyId/dashboard')) as Map<String, dynamic>;
+    return (await _get('/companies/$companyId/dashboard', cacheKey: 'dashboard')) as Map<String, dynamic>;
   }
 
   // ---------------------------------------------------------------- customers
@@ -216,30 +219,137 @@ class ApiClient {
 
   // ---------------------------------------------------------------- reports
   Future<Map<String, dynamic>> getTrialBalance(int companyId) async =>
-      (await _get('/companies/$companyId/reports/trial-balance')) as Map<String, dynamic>;
+      (await _get('/companies/$companyId/reports/trial-balance', cacheKey: 'trial_balance')) as Map<String, dynamic>;
   Future<Map<String, dynamic>> getBalanceSheet(int companyId) async =>
-      (await _get('/companies/$companyId/reports/balance-sheet')) as Map<String, dynamic>;
+      (await _get('/companies/$companyId/reports/balance-sheet', cacheKey: 'balance_sheet')) as Map<String, dynamic>;
   Future<Map<String, dynamic>> getProfitAndLoss(int companyId) async =>
-      (await _get('/companies/$companyId/reports/profit-and-loss')) as Map<String, dynamic>;
+      (await _get('/companies/$companyId/reports/profit-and-loss', cacheKey: 'profit_and_loss')) as Map<String, dynamic>;
+
+  // ------------------------------------------------- detailed reports (Phase 6)
+  Future<Map<String, dynamic>> getSalesReport(int companyId) async =>
+      (await _get('/companies/$companyId/reports/sales', cacheKey: 'sales_report')) as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> getPurchasesReport(int companyId) async =>
+      (await _get('/companies/$companyId/reports/purchases', cacheKey: 'purchases_report')) as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> getInventoryReport(int companyId) async =>
+      (await _get('/companies/$companyId/reports/inventory', cacheKey: 'inventory_report')) as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> getExpensesReport(int companyId) async =>
+      (await _get('/companies/$companyId/reports/expenses', cacheKey: 'expenses_report')) as Map<String, dynamic>;
+
+  // ------------------------------------------------- backup / restore (Phase 6)
+  /// Downloads the full company backup JSON. Returns the raw bytes plus a
+  /// friendly Arabic file name (from the server's RFC 5987 header when
+  /// present).
+  Future<BackupFile> downloadBackup() async {
+    final res = await _send(() => http.get(
+          Uri.parse('$baseUrl/companies/${AppSession.instance.companyId}/backup'),
+          headers: _headers,
+        ));
+    _checkOk(res);
+    String name = 'hesabatak-backup.json';
+    final disposition = res.headers['content-disposition'];
+    if (disposition != null) {
+      final star = RegExp(r"filename\*=UTF-8''([^;]+)").firstMatch(disposition);
+      if (star != null) {
+        name = Uri.decodeComponent(star.group(1)!);
+      }
+    }
+    return BackupFile(bytes: res.bodyBytes, fileName: name);
+  }
+
+  /// Downloads a PDF/Excel export of a report (بند 39/40).
+  /// [fmt] is 'pdf' or 'excel'.
+  Future<BackupFile> downloadExport({required String reportKey, required String fmt}) async {
+    final cid = AppSession.instance.companyId;
+    final res = await _send(() => http.get(
+          Uri.parse('$baseUrl/companies/$cid/export/$reportKey')
+              .replace(queryParameters: {'fmt': fmt}),
+          headers: _headers,
+        ));
+    _checkOk(res);
+    String name = 'hesabatak-$reportKey.${fmt == 'excel' ? 'xlsx' : 'pdf'}';
+    final disposition = res.headers['content-disposition'];
+    if (disposition != null) {
+      final star = RegExp(r"filename\*=UTF-8''([^;]+)").firstMatch(disposition);
+      if (star != null) {
+        name = Uri.decodeComponent(star.group(1)!);
+      }
+    }
+    return BackupFile(bytes: res.bodyBytes, fileName: name);
+  }
+
+  /// Restores a backup file (replace mode). [bytes] is the raw JSON file.
+  Future<Map<String, dynamic>> restoreBackup(List<int> bytes) async {
+    final res = await _send(() => http.post(
+          Uri.parse('$baseUrl/companies/${AppSession.instance.companyId}/restore'),
+          headers: {..._headers, 'Content-Type': 'application/json'},
+          body: bytes,
+        ));
+    if (res.statusCode == 401) AppSession.instance.logout();
+    if (res.statusCode >= 400) throw ApiException(res.statusCode, res.body);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
 
   // ---------------------------------------------------------------- internals
-  Future<dynamic> _get(String path) async {
-    final res = await _send(() => http.get(Uri.parse('$baseUrl$path'), headers: _headers));
-    _checkOk(res);
-    return jsonDecode(res.body);
+  Future<dynamic> _get(String path, {String? cacheKey}) async {
+    try {
+      final res = await _send(() => http.get(Uri.parse('$baseUrl$path'), headers: _headers));
+      _checkOk(res);
+      final decoded = jsonDecode(res.body);
+      if (cacheKey != null && decoded is Map<String, dynamic>) {
+        // Cache best-effort; never let a storage failure break the screen.
+        try {
+          await LocalStore.instance.saveCache(cacheKey, decoded);
+        } catch (_) {}
+      }
+      return decoded;
+    } on ApiNetworkException {
+      if (cacheKey != null) {
+        final cached = await _readCacheOrThrow(cacheKey);
+        if (cached != null) return cached;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _readCacheOrThrow(String cacheKey) async {
+    try {
+      return await LocalStore.instance.readCache(cacheKey);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The backend's write endpoints take their arguments as query params
   /// (FastAPI function parameters), not a JSON body — useQueryParams=true
   /// reflects that; it's true everywhere in this client except /auth/login,
   /// which needs a real form body for OAuth2PasswordRequestForm.
+  ///
+  /// Phase 6: every write funnels through [sendQueued]; when the device is
+  /// offline the write is stored in the sync queue (FIFO, replayed by
+  /// SyncManager) and a synthetic response is returned so screens can treat
+  /// it as accepted — the offline banner shows the pending count.
   Future<Map<String, dynamic>> _post(String path, Map<String, String> params, {required bool useQueryParams}) async {
-    final res = await _send(() {
-      final uri = useQueryParams
-          ? Uri.parse('$baseUrl$path').replace(queryParameters: params)
-          : Uri.parse('$baseUrl$path');
-      return http.post(uri, headers: _headers);
-    });
+    try {
+      return await sendQueued(path, params);
+    } on ApiNetworkException {
+      // Auth and company-creation only make sense with the server reachable
+      // — queueing a register call would replay garbage later.
+      if (path.startsWith('/auth') || path == '/companies') rethrow;
+      await SyncManager.instance.enqueueOfflineWrite(path, params);
+      return const {'status': 'queued', 'offline': true};
+    }
+  }
+
+  /// Sends one write immediately (used by the sync worker to replay the
+  /// queue). Throws [ApiNetworkException] when offline — callers that want
+  /// offline-tolerant behavior catch it and enqueue.
+  Future<Map<String, dynamic>> sendQueued(String path, Map<String, String> params) async {
+    final res = await _send(
+      () => http.post(Uri.parse('$baseUrl$path').replace(queryParameters: params), headers: _headers),
+    );
     _checkOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -286,4 +396,11 @@ class ApiException implements Exception {
   ApiException(this.statusCode, this.body);
   final int statusCode;
   final String body;
+}
+
+/// A downloaded backup: raw JSON bytes + a friendly (Arabic) file name.
+class BackupFile {
+  BackupFile({required this.bytes, required this.fileName});
+  final List<int> bytes;
+  final String fileName;
 }

@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import FastAPI, APIRouter, Depends, HTTPException
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -29,10 +29,17 @@ from app.accounting.reports import (
     trial_balance, profit_and_loss, balance_sheet, party_ledger_balance,
     general_ledger, cash_flow, vat_report,
 )
+from app.accounting.detailed_reports import sales_report, purchases_report, inventory_report, expense_report
+from app.accounting.exports import (
+    build_pdf, build_xlsx, EXPORTS, ExportError,
+)
+from app.accounting.backup import export_backup_file, restore_backup, RestoreError
 from app.accounting.inventory import opening_stock_value
 from app.models.accounts import SystemAccountCode
 from app.auth.security import hash_password, verify_password, create_access_token, SECRET_KEY
 from app.auth.dependencies import get_db, get_current_user, verify_company_access
+from fastapi import Response
+from urllib.parse import quote
 
 app = FastAPI(title="حساباتك API")
 
@@ -484,6 +491,134 @@ def report_vat(company_id: int, start: Optional[date] = None, end: Optional[date
     """spec §33: المحصّل - المدفوع = الصافي المستحق، من حسابات VAT في القيود."""
     vat = vat_report(db, company_id, start=start, end=end)
     return {k: str(v) for k, v in vat.items()}
+
+
+# ---------------------------------------------------------------- detailed reports (Phase 6)
+@scoped.get("/reports/sales")
+def report_sales(company_id: int, start: Optional[date] = None, end: Optional[date] = None,
+                 db: Session = Depends(get_db)):
+    """تقرير المبيعات التفصيلي: كل فاتورة ببنودها + إجماليات الفترة (بند 39)."""
+    rep = sales_report(db, company_id, start, end)
+    return {
+        "rows": [{"invoice_number": r.invoice_number, "invoice_date": str(r.invoice_date),
+                  "customer_name": r.customer_name, "is_credit": r.is_credit,
+                  "payment_method": r.payment_method, "subtotal": str(r.subtotal),
+                  "vat_amount": str(r.vat_amount), "total": str(r.total)} for r in rep["rows"]],
+        "lines": {inv: [{"product_name": l.product_name, "quantity": str(l.quantity),
+                         "unit_price": str(l.unit_price), "line_total": str(l.line_total)}
+                        for l in lines]
+                  for inv, lines in rep["lines"].items()},
+        "totals": {k: (str(v) if isinstance(v, Decimal) else v) for k, v in rep["totals"].items()},
+    }
+
+
+@scoped.get("/reports/purchases")
+def report_purchases(company_id: int, start: Optional[date] = None, end: Optional[date] = None,
+                     db: Session = Depends(get_db)):
+    """تقرير المشتريات التفصيلي: كل فاتورة ببنودها + إجماليات الفترة (بند 39)."""
+    rep = purchases_report(db, company_id, start, end)
+    return {
+        "rows": [{"invoice_number": r.invoice_number, "invoice_date": str(r.invoice_date),
+                  "supplier_name": r.supplier_name, "is_credit": r.is_credit,
+                  "payment_method": r.payment_method, "subtotal": str(r.subtotal),
+                  "vat_amount": str(r.vat_amount), "total": str(r.total)} for r in rep["rows"]],
+        "lines": {inv: [{"product_name": l.product_name, "quantity": str(l.quantity),
+                         "unit_price": str(l.unit_price), "line_total": str(l.line_total)}
+                        for l in lines]
+                  for inv, lines in rep["lines"].items()},
+        "totals": {k: (str(v) if isinstance(v, Decimal) else v) for k, v in rep["totals"].items()},
+    }
+
+
+@scoped.get("/reports/inventory")
+def report_inventory(company_id: int, db: Session = Depends(get_db)):
+    """تقرير المخزون: الكميات والقيمة بتكلفة المتوسط المرجح + القيمة البيعية (بند 39)."""
+    rep = inventory_report(db, company_id)
+    return {
+        "rows": [{"product_id": r.product_id, "name": r.name, "sku": r.sku, "unit": r.unit,
+                  "current_stock": str(r.current_stock), "avg_cost": str(r.avg_cost),
+                  "selling_price": str(r.selling_price), "stock_value": str(r.stock_value),
+                  "retail_value": str(r.retail_value), "minimum_stock": str(r.minimum_stock),
+                  "is_low": r.is_low, "is_out": r.is_out} for r in rep["rows"]],
+        "totals": {k: (str(v) if isinstance(v, Decimal) else v) for k, v in rep["totals"].items()},
+    }
+
+
+@scoped.get("/reports/expenses")
+def report_expenses(company_id: int, start: Optional[date] = None, end: Optional[date] = None,
+                    db: Session = Depends(get_db)):
+    """تقرير المصروفات مجمّعة على حسابات المصروفات، من القيود مباشرة."""
+    rep = expense_report(db, company_id, start, end)
+    return {"rows": [{"code": r["code"], "name_ar": r["name_ar"], "amount": str(r["amount"])}
+                     for r in rep["rows"]],
+            "total": str(rep["total"])}
+
+
+# ---------------------------------------------------------------- export PDF/Excel (Phase 6, بند 39/40)
+@scoped.get("/export/{report_key}")
+def export_report(company_id: int, report_key: str, fmt: str = "pdf",
+                  start: Optional[date] = None, end: Optional[date] = None,
+                  account_code: Optional[str] = None,
+                  db: Session = Depends(get_db)):
+    """PDF/Excel لأي تقرير من: sales, purchases, inventory, expenses, vat,
+    trial_balance, general_ledger. fmt = pdf | excel (أو xlsx)."""
+    builder = EXPORTS.get(report_key)
+    if builder is None:
+        raise HTTPException(404, "تقرير غير معروف للتصدير.")
+    fmt_key = "xlsx" if fmt.lower() in ("excel", "xlsx") else "pdf"
+    try:
+        spec = builder(db, company_id, start, end) if report_key != "general_ledger" \
+            else builder(db, company_id, start, end, account_code)
+    except ExportError as e:
+        raise HTTPException(400, str(e))
+
+    if fmt_key == "xlsx":
+        body = build_xlsx(spec.title, spec.subtitle, spec.sheets)
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ext = "xlsx"
+    else:
+        body = build_pdf(spec.title, spec.subtitle, spec.headers, spec.rows, spec.totals)
+        media = "application/pdf"
+        ext = "pdf"
+
+    ascii_name = f"{spec.file_name}-{date.today().isoformat()}.{ext}"
+    # HTTP headers are latin-1: the Arabic filename must be percent-encoded
+    # (RFC 5987) or Starlette can't even serialize the response.
+    arabic_name = quote(f"{spec.display_name}-{date.today().isoformat()}.{ext}")
+    headers = {
+        "Content-Disposition": (
+            f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{arabic_name}"
+        ),
+        "Content-Type": media,
+    }
+    return Response(content=body, media_type=media, headers=headers)
+
+
+# ---------------------------------------------------------------- backup / restore (Phase 6, بند 59/60)
+@scoped.get("/backup")
+def backup_company(company_id: int, db: Session = Depends(get_db)):
+    """نسخة احتياطية كاملة للشركة في ملف JSON واحد قابل للقراءة (بند 59)."""
+    body, disposition = export_backup_file(db, company_id)
+    return Response(content=body, media_type="application/json",
+                    headers={"Content-Disposition": disposition})
+
+
+@scoped.post("/restore")
+def restore_company(company_id: int, payload: dict = Body(...),
+                    db: Session = Depends(get_db)):
+    """استعادة نسخة احتياطية (وضع الاستبدال): يستبدل بيانات الشركة الحالية بالكامل
+    بعد التحقق من توازنها محاسبيًا؛ أي خطأ يعني التراجع عن كل شيء (بند 60).
+    محتوى ملف النسخة يُرسل JSON في جسم الطلب."""
+    try:
+        entries = restore_backup(db, company_id, payload)
+    except RestoreError as e:
+        db.rollback()
+        raise HTTPException(400, str(e))
+    except Exception:
+        db.rollback()
+        raise HTTPException(400, "تعذر قراءة النسخة الاحتياطية. تأكد من اختيار ملف صحيح.")
+    return {"status": "ok", "journal_entries_restored": entries,
+            "message": "تمت الاستعادة بنجاح"}
 
 
 app.include_router(auth_router)
