@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/app_config.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import '../home/home_shell.dart';
 
 /// فاتورة مشتريات — نفس تصميم فاتورة المبيعات (نظام موحد) مع المورد بدل
 /// العميل، والأسعار شرائية (تدخل المخزون بالمتوسط المرجح تلقائيًا).

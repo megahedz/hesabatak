@@ -77,7 +77,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     String from = _cash.$1; // الخزينة
     String to = _bank.$1; // البنك
     bool saving = false;
-    const accounts = {_cash.$1: 'الخزينة', _bank.$1: 'البنك'};
+    final accounts = {_cash.$1: 'الخزينة', _bank.$1: 'البنك'};
 
     final ok = await showModalBottomSheet<bool>(
       context: context,

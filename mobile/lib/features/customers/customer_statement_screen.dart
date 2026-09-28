@@ -3,6 +3,7 @@ import '../../core/api_client.dart';
 import '../../core/app_config.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import '../home/home_shell.dart';
 import 'customer_model.dart';
 
 /// كشف حساب العميل (spec §23): رصيد افتتاحي، كل فاتورة ودفعة بالترتيب، رصيد ختامي.

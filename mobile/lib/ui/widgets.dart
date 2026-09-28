@@ -7,9 +7,12 @@ import 'theme.dart';
 /// تنسيق الأرقام بفواصل الآلاف وأرقام لاتينية (كما في التصميم المرجعي).
 class AppFmt {
   AppFmt._();
-  static final NumberFormat _num = NumberFormat('#,##0.##', 'en');
-  static String num(num v) => _num.format(v);
-  static String money(num v, {String currency = 'ج.م'}) => '${_num.format(v)} $currency';
+  static final NumberFormat _fmt = NumberFormat('#,##0.##', 'en');
+
+  // المعلمة dynamic لتجنّب حجب النوع المدمج `num` داخل نفس الكلاس
+  // (اسم الدالة نفسه num). القيم المقبولة أرقام فقط في زمن التشغيل.
+  static String num(dynamic value) => _fmt.format(value as num);
+  static String money(dynamic value, {String currency = 'ج.م'}) => '${_fmt.format(value as num)} $currency';
 }
 
 /// شعار حساباتك: أعمدة بيانية صاعدة بسهم — مرسوم بالكود ليطابق المرجع

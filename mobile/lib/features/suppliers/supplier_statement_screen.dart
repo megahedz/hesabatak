@@ -4,6 +4,7 @@ import '../../core/app_config.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../customers/customer_model.dart'; // shares the Statement/StatementLine model
+import '../home/home_shell.dart';
 
 /// كشف حساب المورد (spec §24).
 class SupplierStatementScreen extends StatefulWidget {
