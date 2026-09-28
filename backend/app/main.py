@@ -39,7 +39,9 @@ from app.accounting.backup import export_backup_file, restore_backup, RestoreErr
 from app.accounting.inventory import opening_stock_value
 from app.models.accounts import SystemAccountCode
 from app.auth.security import hash_password, verify_password, create_access_token, SECRET_KEY
-from app.auth.dependencies import get_db, get_current_user, verify_company_access
+from app.auth.dependencies import (
+    get_db, get_current_user, verify_company_access, RoleChecker, ROLE_PERMISSIONS,
+)
 from fastapi import Response
 from urllib.parse import quote
 
@@ -148,14 +150,16 @@ def get_settings(company_id: int, db: Session = Depends(get_db)):
 
 
 @scoped.post("/settings")
-def update_settings(company_id: int,
-                    vat_enabled: Optional[bool] = None,
-                    vat_rate: Optional[Decimal] = None,
-                    inventory_enabled: Optional[bool] = None,
-                    fiscal_year_start_month: Optional[int] = None,
-                    name: Optional[str] = None,
-                    business_type: Optional[str] = None,
-                    db: Session = Depends(get_db)):
+def update_settings(
+    company_id: int,
+    vat_enabled: Optional[bool] = None,
+    vat_rate: Optional[Decimal] = None,
+    inventory_enabled: Optional[bool] = None,
+    fiscal_year_start_month: Optional[int] = None,
+    name: Optional[str] = None,
+    business_type: Optional[str] = None,
+    membership: CompanyUser = Depends(RoleChecker("manage_settings")),
+    db: Session = Depends(get_db)):
     """Partial update — only the fields the caller sends change."""
     company = db.query(Company).filter(Company.id == company_id).one_or_none()
     if company is None:
@@ -194,12 +198,14 @@ def list_products(company_id: int, db: Session = Depends(get_db)):
 
 
 @scoped.post("/products")
-def create_product(company_id: int, name: str, sku: Optional[str] = None,
-                   barcode: Optional[str] = None, unit: str = "قطعة",
-                   purchase_price: Decimal = Decimal("0"), selling_price: Decimal = Decimal("0"),
-                   opening_stock_qty: Decimal = Decimal("0"),
-                   minimum_stock: Decimal = Decimal("0"),
-                   db: Session = Depends(get_db)):
+def create_product(
+    company_id: int, name: str, sku: Optional[str] = None,
+    barcode: Optional[str] = None, unit: str = "قطعة",
+    purchase_price: Decimal = Decimal("0"), selling_price: Decimal = Decimal("0"),
+    opening_stock_qty: Decimal = Decimal("0"),
+    minimum_stock: Decimal = Decimal("0"),
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     """
     Create a product. If it starts with stock already on hand, the stock is
     received at `purchase_price` and its value is posted as
@@ -257,8 +263,11 @@ def dashboard(company_id: int, start: Optional[date] = None, db: Session = Depen
 
 # ---------------------------------------------------------------- customers
 @scoped.post("/customers")
-def create_customer(company_id: int, name: str, phone: Optional[str] = None,
-                     opening_balance: Decimal = Decimal("0"), db: Session = Depends(get_db)):
+def create_customer(
+    company_id: int, name: str, phone: Optional[str] = None,
+    opening_balance: Decimal = Decimal("0"),
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     customer = Customer(company_id=company_id, name=name, phone=phone, opening_balance=opening_balance)
     db.add(customer)
     db.commit()
@@ -342,8 +351,11 @@ def get_customer_statement(company_id: int, customer_id: int, db: Session = Depe
 
 # ---------------------------------------------------------------- suppliers
 @scoped.post("/suppliers")
-def create_supplier(company_id: int, name: str, phone: Optional[str] = None,
-                     opening_balance: Decimal = Decimal("0"), db: Session = Depends(get_db)):
+def create_supplier(
+    company_id: int, name: str, phone: Optional[str] = None,
+    opening_balance: Decimal = Decimal("0"),
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     supplier = Supplier(company_id=company_id, name=name, phone=phone, opening_balance=opening_balance)
     db.add(supplier)
     db.commit()
@@ -370,11 +382,14 @@ def get_supplier_statement(company_id: int, supplier_id: int, db: Session = Depe
 
 # ---------------------------------------------------------------- operations
 @scoped.post("/operations/sale")
-def op_sale(company_id: int, amount: Decimal, is_credit: bool = False, method: str = "cash",
-            customer_id: Optional[int] = None, vat_amount: Decimal = Decimal("0"),
-            product_id: Optional[int] = None, quantity: Decimal = Decimal("0"),
-            unit_price: Optional[Decimal] = None,
-            items_json: Optional[str] = None, db: Session = Depends(get_db)):
+def op_sale(
+    company_id: int, amount: Decimal, is_credit: bool = False, method: str = "cash",
+    customer_id: Optional[int] = None, vat_amount: Decimal = Decimal("0"),
+    product_id: Optional[int] = None, quantity: Decimal = Decimal("0"),
+    unit_price: Optional[Decimal] = None,
+    items_json: Optional[str] = None,
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     """One sale. When product_id+quantity are given, the invoice records the
     line, stock is consumed at weighted-average cost, and the computed COGS is
     posted automatically — the caller never sends COGS (spec §9: engine only).
@@ -424,12 +439,14 @@ def _parse_items_json(raw: str) -> list[dict]:
 
 
 @scoped.post("/operations/purchase")
-def op_purchase(company_id: int, amount: Decimal, is_credit: bool = False, method: str = "cash",
-                 supplier_id: Optional[int] = None, goes_to_inventory: bool = False,
-                 vat_amount: Decimal = Decimal("0"),
-                 product_id: Optional[int] = None, quantity: Decimal = Decimal("0"),
-                 items_json: Optional[str] = None,
-                 db: Session = Depends(get_db)):
+def op_purchase(
+    company_id: int, amount: Decimal, is_credit: bool = False, method: str = "cash",
+    supplier_id: Optional[int] = None, goes_to_inventory: bool = False,
+    vat_amount: Decimal = Decimal("0"),
+    product_id: Optional[int] = None, quantity: Decimal = Decimal("0"),
+    items_json: Optional[str] = None,
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     """One purchase. With product_id+quantity, stock is received at
     amount/quantity as unit cost and the weighted average is re-computed.
     Multi-line clients (the redesigned invoice screen) send `items_json` —
@@ -458,8 +475,10 @@ def op_purchase(company_id: int, amount: Decimal, is_credit: bool = False, metho
 
 
 @scoped.post("/operations/customer-payment")
-def op_customer_payment(company_id: int, amount: Decimal, customer_id: int, method: str = "cash",
-                         db: Session = Depends(get_db)):
+def op_customer_payment(
+    company_id: int, amount: Decimal, customer_id: int, method: str = "cash",
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     try:
         payment = record_customer_payment(db, company_id=company_id, entry_date=date.today(),
                                            amount=amount, customer_id=customer_id, method=method)
@@ -470,8 +489,10 @@ def op_customer_payment(company_id: int, amount: Decimal, customer_id: int, meth
 
 
 @scoped.post("/operations/supplier-payment")
-def op_supplier_payment(company_id: int, amount: Decimal, supplier_id: int, method: str = "cash",
-                         db: Session = Depends(get_db)):
+def op_supplier_payment(
+    company_id: int, amount: Decimal, supplier_id: int, method: str = "cash",
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     try:
         payment = record_supplier_payment(db, company_id=company_id, entry_date=date.today(),
                                            amount=amount, supplier_id=supplier_id, method=method)
@@ -482,9 +503,12 @@ def op_supplier_payment(company_id: int, amount: Decimal, supplier_id: int, meth
 
 
 @scoped.post("/operations/expense")
-def op_expense(company_id: int, amount: Decimal, method: str = "cash",
-               expense_account_code: str = SystemAccountCode.UNCATEGORIZED_EXPENSE.value,
-               notes: Optional[str] = None, db: Session = Depends(get_db)):
+def op_expense(
+    company_id: int, amount: Decimal, method: str = "cash",
+    expense_account_code: str = SystemAccountCode.UNCATEGORIZED_EXPENSE.value,
+    notes: Optional[str] = None,
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     try:
         expense = record_expense(db, company_id=company_id, entry_date=date.today(), amount=amount,
                                   expense_account_code=expense_account_code, method=method, notes=notes)
@@ -495,7 +519,10 @@ def op_expense(company_id: int, amount: Decimal, method: str = "cash",
 
 
 @scoped.post("/operations/capital")
-def op_capital(company_id: int, amount: Decimal, method: str = "cash", db: Session = Depends(get_db)):
+def op_capital(
+    company_id: int, amount: Decimal, method: str = "cash",
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     try:
         entry = AccountingService.create_capital(db, company_id=company_id, entry_date=date.today(),
                                                    amount=amount, method=method)
@@ -506,7 +533,10 @@ def op_capital(company_id: int, amount: Decimal, method: str = "cash", db: Sessi
 
 
 @scoped.post("/operations/owner-withdrawal")
-def op_owner_withdrawal(company_id: int, amount: Decimal, method: str = "cash", db: Session = Depends(get_db)):
+def op_owner_withdrawal(
+    company_id: int, amount: Decimal, method: str = "cash",
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     try:
         entry = AccountingService.create_owner_withdrawal(db, company_id=company_id, entry_date=date.today(),
                                                             amount=amount, method=method)
@@ -517,7 +547,10 @@ def op_owner_withdrawal(company_id: int, amount: Decimal, method: str = "cash", 
 
 
 @scoped.post("/operations/transfer")
-def op_transfer(company_id: int, amount: Decimal, from_code: str, to_code: str, db: Session = Depends(get_db)):
+def op_transfer(
+    company_id: int, amount: Decimal, from_code: str, to_code: str,
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
     try:
         entry = AccountingService.create_transfer(db, company_id=company_id, entry_date=date.today(),
                                                     amount=amount, from_code=from_code, to_code=to_code)
@@ -652,6 +685,217 @@ def report_expenses(company_id: int, start: Optional[date] = None, end: Optional
             "total": str(rep["total"])}
 
 
+# ---------------------------------------------------------------- team (Phase 7, صلاحيات المستخدمين)
+@scoped.get("/team")
+def list_team(company_id: int, db: Session = Depends(get_db)):
+    """أعضاء الشركة وأدوارهم — يظهر لكل الأعضاء (الشفافية)، الإدارة للمالك فقط."""
+    rows = (
+        db.query(CompanyUser, User)
+        .join(User, User.id == CompanyUser.user_id)
+        .filter(CompanyUser.company_id == company_id)
+        .order_by(CompanyUser.id.asc())
+        .all()
+    )
+    return [
+        {"user_id": u.id, "full_name": u.full_name, "phone": u.phone,
+         "role": cu.role, "is_you": False}
+        for cu, u in rows
+    ]
+
+
+@scoped.post("/team/add")
+def add_team_member(
+    company_id: int,
+    phone: str,
+    role: str = "staff",
+    membership: CompanyUser = Depends(RoleChecker("manage_team")),
+    db: Session = Depends(get_db),
+):
+    """إضافة مستخدم مسجّل (برقم هاتفه) إلى الشركة بدور محدد. المالك فقط."""
+    if role not in ROLE_PERMISSIONS:
+        raise HTTPException(400, "الدور يجب أن يكون: owner أو accountant أو staff.")
+    if membership.role == "owner" and role == "owner":
+        # Adding another owner is allowed, but never demote the last owner
+        # implicitly here — owners are managed via /team/role.
+        pass
+    user = db.query(User).filter(User.phone == phone.strip()).one_or_none()
+    if user is None:
+        raise HTTPException(404, "لا يوجد مستخدم مسجّل بهذا الرقم. اطلب منه إنشاء حساب أولًا.")
+    existing = (
+        db.query(CompanyUser)
+        .filter(CompanyUser.company_id == company_id, CompanyUser.user_id == user.id)
+        .one_or_none()
+    )
+    if existing is not None:
+        raise HTTPException(400, "هذا المستخدم عضو في الشركة بالفعل.")
+    db.add(CompanyUser(company_id=company_id, user_id=user.id, role=role))
+    db.commit()
+    return {"status": "ok", "user_id": user.id, "full_name": user.full_name, "role": role}
+
+
+@scoped.post("/team/role")
+def change_member_role(
+    company_id: int,
+    user_id: int,
+    role: str,
+    membership: CompanyUser = Depends(RoleChecker("manage_team")),
+    db: Session = Depends(get_db),
+):
+    """تغيير دور عضو موجود. لا يمكن للمالك تغيير دوره هو آخر مالك فيترك الشركة بلا مالك."""
+    if role not in ROLE_PERMISSIONS:
+        raise HTTPException(400, "الدور يجب أن يكون: owner أو accountant أو staff.")
+    target = (
+        db.query(CompanyUser)
+        .filter(CompanyUser.company_id == company_id, CompanyUser.user_id == user_id)
+        .one_or_none()
+    )
+    if target is None:
+        raise HTTPException(404, "العضو غير موجود في هذه الشركة.")
+    if target.user_id == membership.user_id and target.role == "owner" and role != "owner":
+        owners = (
+            db.query(CompanyUser)
+            .filter(CompanyUser.company_id == company_id, CompanyUser.role == "owner")
+            .count()
+        )
+        if owners <= 1:
+            raise HTTPException(400, "لا يمكن إزالة دور المالك — أنت المالك الوحيد.")
+    target.role = role
+    db.commit()
+    return {"status": "ok", "user_id": user_id, "role": role}
+
+
+@scoped.post("/team/remove")
+def remove_team_member(
+    company_id: int,
+    user_id: int,
+    membership: CompanyUser = Depends(RoleChecker("manage_team")),
+    db: Session = Depends(get_db),
+):
+    """إزالة عضو من الشركة. حماية آخر مالك من إزالة نفسه بالخطأ."""
+    target = (
+        db.query(CompanyUser)
+        .filter(CompanyUser.company_id == company_id, CompanyUser.user_id == user_id)
+        .one_or_none()
+    )
+    if target is None:
+        raise HTTPException(404, "العضو غير موجود في هذه الشركة.")
+    if target.role == "owner":
+        owners = (
+            db.query(CompanyUser)
+            .filter(CompanyUser.company_id == company_id, CompanyUser.role == "owner")
+            .count()
+        )
+        if owners <= 1:
+            raise HTTPException(400, "لا يمكن إزالة المالك الوحيد للشركة.")
+    db.delete(target)
+    db.commit()
+    return {"status": "ok"}
+
+
+@scoped.get("/team/me")
+def my_membership(
+    company_id: int,
+    membership: CompanyUser = Depends(verify_company_access),
+):
+    """دور المستخدم الحالي في هذه الشركة — لتخصيص الواجهة حسب الصلاحية."""
+    return {"role": membership.role, "permissions": sorted(ROLE_PERMISSIONS.get(membership.role, set()))}
+
+
+# ---------------------------------------------------------------- notifications (Phase 7, التنبيهات)
+@scoped.get("/notifications")
+def notifications(company_id: int, db: Session = Depends(get_db)):
+    """تنبيهات عملية بسيطة: أصناف تحت حد الطلب أو نافدة، وأرصدة عملاء مستحقة،
+    وموردون مستحق لهم — من البيانات الحقيقية مباشرة (بند 84).
+    العناصر العاجلة أولًا: النافد (خطأ) ثم المنخفض (تحذير) ثم المستحق للتحصيل."""
+    alerts: list[dict] = []
+
+    # 1) المخزون: النافد ثم المنخفض
+    products = (
+        db.query(Product)
+        .filter(Product.company_id == company_id, Product.deleted_at.is_(None))
+        .all()
+    )
+    for p in products:
+        stock = float(p.current_stock or 0)
+        minimum = float(p.minimum_stock or 0)
+        if minimum <= 0:
+            continue
+        if stock <= 0:
+            alerts.append({
+                "kind": "stock_out", "severity": "error", "icon": "warning",
+                "title": f"نفد المخزون: {p.name}",
+                "body": f"الرصيد الحالي صفر (الحد الأدنى {AppFmt_num(minimum)}).",
+            })
+        elif stock <= minimum:
+            alerts.append({
+                "kind": "stock_low", "severity": "warning", "icon": "warning",
+                "title": f"مخزون منخفض: {p.name}",
+                "body": f"الرصيد {AppFmt_num(stock)} — الحد الأدنى {AppFmt_num(minimum)}.",
+            })
+
+    # 2) العملاء المستحق لنا لديهم
+    from app.models.journal import JournalEntryLine, JournalEntry
+    from app.models.accounts import Account
+    from app.models.parties import Customer as CustomerModel, Supplier as SupplierModel
+
+    ar_rows = (
+        db.query(JournalEntryLine.customer_id, CustomerModel.name,
+                 func.coalesce(func.sum(JournalEntryLine.debit) - func.sum(JournalEntryLine.credit), 0))
+        .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
+        .join(Account, Account.id == JournalEntryLine.account_id)
+        .join(CustomerModel, CustomerModel.id == JournalEntryLine.customer_id)
+        .filter(
+            JournalEntry.company_id == company_id,
+            JournalEntryLine.customer_id.isnot(None),
+            Account.code == SystemAccountCode.ACCOUNTS_RECEIVABLE.value,
+        )
+        .group_by(JournalEntryLine.customer_id, CustomerModel.name)
+        .all()
+    )
+    for cid, name, net in ar_rows:
+        balance = float(net or 0)
+        if balance > 0:
+            alerts.append({
+                "kind": "receivable", "severity": "info", "icon": "person",
+                "title": f"مستحق للتحصيل: {name}",
+                "body": f"رصيد مستحق لدينا {AppFmt_num(balance)} ج.م.",
+            })
+
+    # 3) الموردون المستحق لهم علينا
+    ap_rows = (
+        db.query(JournalEntryLine.supplier_id, SupplierModel.name,
+                 func.coalesce(func.sum(JournalEntryLine.credit) - func.sum(JournalEntryLine.debit), 0))
+        .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
+        .join(Account, Account.id == JournalEntryLine.account_id)
+        .join(SupplierModel, SupplierModel.id == JournalEntryLine.supplier_id)
+        .filter(
+            JournalEntry.company_id == company_id,
+            JournalEntryLine.supplier_id.isnot(None),
+            Account.code == SystemAccountCode.ACCOUNTS_PAYABLE.value,
+        )
+        .group_by(JournalEntryLine.supplier_id, SupplierModel.name)
+        .all()
+    )
+    for sid, name, net in ap_rows:
+        balance = float(net or 0)
+        if balance > 0:
+            alerts.append({
+                "kind": "payable", "severity": "info", "icon": "store",
+                "title": f"مستحق الدفع: {name}",
+                "body": f"رصيد مستحق لهم {AppFmt_num(balance)} ج.م.",
+            })
+
+    severity_order = {"error": 0, "warning": 1, "info": 2}
+    alerts.sort(key=lambda a: severity_order.get(a["severity"], 3))
+    return {"alerts": alerts, "count": len(alerts)}
+
+
+def AppFmt_num(v: float) -> str:
+    """تنسيق رقمي خفيف للتنبيهات (فواصل آلاف بدون كسور زائدة)."""
+    s = f"{v:,.2f}"
+    return s[:-3] if s.endswith(".00") else s
+
+
 # ---------------------------------------------------------------- export PDF/Excel (Phase 6, بند 39/40)
 @scoped.get("/export/{report_key}")
 def export_report(company_id: int, report_key: str, fmt: str = "pdf",
@@ -694,7 +938,11 @@ def export_report(company_id: int, report_key: str, fmt: str = "pdf",
 
 # ---------------------------------------------------------------- backup / restore (Phase 6, بند 59/60)
 @scoped.get("/backup")
-def backup_company(company_id: int, db: Session = Depends(get_db)):
+def backup_company(
+    company_id: int,
+    membership: CompanyUser = Depends(RoleChecker("backup")),
+    db: Session = Depends(get_db),
+):
     """نسخة احتياطية كاملة للشركة في ملف JSON واحد قابل للقراءة (بند 59)."""
     body, disposition = export_backup_file(db, company_id)
     return Response(content=body, media_type="application/json",
@@ -702,8 +950,12 @@ def backup_company(company_id: int, db: Session = Depends(get_db)):
 
 
 @scoped.post("/restore")
-def restore_company(company_id: int, payload: dict = Body(...),
-                    db: Session = Depends(get_db)):
+def restore_company(
+    company_id: int,
+    payload: dict = Body(...),
+    membership: CompanyUser = Depends(RoleChecker("backup")),
+    db: Session = Depends(get_db),
+):
     """استعادة نسخة احتياطية (وضع الاستبدال): يستبدل بيانات الشركة الحالية بالكامل
     بعد التحقق من توازنها محاسبيًا؛ أي خطأ يعني التراجع عن كل شيء (بند 60).
     محتوى ملف النسخة يُرسل JSON في جسم الطلب."""

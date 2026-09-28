@@ -390,8 +390,12 @@ def test_http_backup_and_restore_roundtrip():
 
 def test_http_new_endpoints_require_membership():
     token, cid = _setup_company_with_one_sale()
+    # رقم عشوائي: قاعدة الاختبار SQLite مشتركة بين التشغيلات، والأرقام الثابتة
+    # تصطدم بمستخدمين من تشغيل سابق (كان هذا يُفشل الاختبار عشوائيًا).
+    import random
+    other_phone = f"0122{random.randint(0, 99999999):08d}"
     other = http_client.post("/auth/register",
-                             params={"full_name": "غريب", "phone": "01100000002", "password": "secret123"})
+                             params={"full_name": "غريب", "phone": other_phone, "password": "secret123"})
     other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
     for path in (f"/companies/{cid}/reports/sales", f"/companies/{cid}/backup"):
         res = http_client.get(path, headers=other_headers)

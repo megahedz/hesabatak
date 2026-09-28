@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../home/home_shell.dart';
+import '../notifications/notifications_sheet.dart';
 import '../operations/quick_actions_sheet.dart';
 import '../reports/export_service.dart';
 import 'dashboard_model.dart';
@@ -97,7 +98,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             tooltip: 'التنبيهات',
             icon: const Icon(Icons.notifications_outlined, color: AppColors.navy),
-            onPressed: () {},
+            onPressed: () => showNotificationsSheet(context),
           ),
         ],
       ),

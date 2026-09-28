@@ -32,7 +32,7 @@ class _CustomerStatementScreenState extends State<CustomerStatementScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppHeader(title: 'كشف حساب: ${widget.customerName}'),
+      appBar: AppHeader(title: 'كشف حساب: ${widget.customerName}', showMenu: false),
       body: FutureBuilder<Statement>(
         future: _future,
         builder: (context, snapshot) {

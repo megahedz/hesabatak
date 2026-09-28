@@ -144,3 +144,75 @@ def test_purchase_with_items_json_receives_stock():
         headers=headers,
     )
     assert res.status_code >= 400, res.text
+
+
+def test_roles_block_and_allow_operations():
+    """Phase 7: staff يرى كل شيء لكن لا يسجل عمليات؛ accountant يسجل ولا يدير الفريق."""
+    headers, cid = _setup_company()
+
+    # Register two more users to invite into the company.
+    client.post("/auth/register", params={"full_name": "محاسب", "phone": "01000000091", "password": "secret123"})
+    client.post("/auth/register", params={"full_name": "موظف", "phone": "01000000092", "password": "secret123"})
+
+    # Owner adds an accountant and a staff member.
+    res = client.post(f"/companies/{cid}/team/add", params={"phone": "01000000091", "role": "accountant"}, headers=headers)
+    assert res.status_code == 200, res.text
+    res = client.post(f"/companies/{cid}/team/add", params={"phone": "01000000092", "role": "staff"}, headers=headers)
+    assert res.status_code == 200, res.text
+
+    acc_token = client.post("/auth/login", data={"username": "01000000091", "password": "secret123"}).json()["access_token"]
+    staff_token = client.post("/auth/login", data={"username": "01000000092", "password": "secret123"}).json()["access_token"]
+    acc = {"Authorization": f"Bearer {acc_token}"}
+    staff = {"Authorization": f"Bearer {staff_token}"}
+
+    # Everyone can read the dashboard.
+    assert client.get(f"/companies/{cid}/dashboard", headers=staff).status_code == 200
+
+    # Staff cannot record a sale (403), accountant can.
+    res = client.post(f"/companies/{cid}/operations/sale", params={"amount": "10", "is_credit": "false"}, headers=staff)
+    assert res.status_code == 403, res.text
+    res = client.post(f"/companies/{cid}/operations/sale", params={"amount": "10", "is_credit": "false"}, headers=acc)
+    assert res.status_code == 200, res.text
+
+    # Staff cannot add team members; owner can.
+    res = client.post(f"/companies/{cid}/team/add", params={"phone": "01000000099", "role": "staff"}, headers=staff)
+    assert res.status_code == 403
+    # Owner cannot remove themselves (last owner).
+    me = client.get(f"/companies/{cid}/team/me", headers=headers).json()
+    assert me["role"] == "owner"
+
+    # Unknown role rejected.
+    res = client.post(f"/companies/{cid}/team/add", params={"phone": "01000000090", "role": "boss"}, headers=headers)
+    assert res.status_code == 400
+
+
+def test_notifications_report_real_conditions():
+    """Phase 7: التنبيهات من بيانات حقيقية — نفاد مخزون + عميل مستحق له."""
+    headers, cid = _setup_company()
+    db = SessionLocal()
+
+    # A product that starts out of stock with a minimum → stock_out alert.
+    res = client.post(
+        f"/companies/{cid}/products",
+        params={"name": "صنف نافد", "purchase_price": "5", "selling_price": "9", "minimum_stock": "5"},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+
+    # A credit sale of 900 then a 400 payment → 500 receivable alert.
+    customer = Customer(company_id=cid, name="عميل متأخر"); db.add(customer); db.flush()
+    record_sale(db, company_id=cid, entry_date=date.today(), amount=Decimal("900"),
+                is_credit=True, customer_id=customer.id)
+    record_customer_payment(db, company_id=cid, entry_date=date.today(),
+                            amount=Decimal("400"), customer_id=customer.id, method="cash")
+    db.commit()
+
+    data = client.get(f"/companies/{cid}/notifications", headers=headers).json()
+    kinds = {a["kind"] for a in data["alerts"]}
+    assert "stock_out" in kinds, data
+    assert "receivable" in kinds, data
+    assert data["count"] == len(data["alerts"]) >= 2
+
+    # Error severity (نفد) sorts before info (مستحق).
+    severities = [a["severity"] for a in data["alerts"]]
+    assert severities.index("error") < severities.index("info")

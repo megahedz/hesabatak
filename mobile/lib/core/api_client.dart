@@ -308,6 +308,47 @@ class ApiClient {
     }, useQueryParams: true);
   }
 
+  // ---------------------------------------------------------------- team & notifications (Phase 7)
+  /// دور المستخدم الحالي في الشركة وصلاحياته (لتخصيص الواجهة).
+  Future<Map<String, dynamic>> getMyMembership(int companyId) async {
+    return (await _get('/companies/$companyId/team/me', cacheKey: 'membership')) as Map<String, dynamic>;
+  }
+
+  /// أعضاء الشركة وأدوارهم.
+  Future<List<dynamic>> getTeam(int companyId) async {
+    final res = await _get('/companies/$companyId/team');
+    return res as List<dynamic>;
+  }
+
+  /// إضافة عضو (مستخدم مسجّل برقم هاتفه) بدور محدد. المالك فقط.
+  Future<Map<String, dynamic>> addTeamMember(int companyId, {required String phone, required String role}) {
+    return _post('/companies/$companyId/team/add', {
+      'phone': phone,
+      'role': role,
+    }, useQueryParams: true);
+  }
+
+  /// تغيير دور عضو. المالك فقط.
+  Future<Map<String, dynamic>> changeMemberRole(int companyId, {required int userId, required String role}) {
+    return _post('/companies/$companyId/team/role', {
+      'user_id': userId.toString(),
+      'role': role,
+    }, useQueryParams: true);
+  }
+
+  /// إزالة عضو من الشركة. المالك فقط.
+  Future<Map<String, dynamic>> removeTeamMember(int companyId, {required int userId}) {
+    return _post('/companies/$companyId/team/remove', {
+      'user_id': userId.toString(),
+    }, useQueryParams: true);
+  }
+
+  /// تنبيهات عملية: أصناف نافدة/منخفضة، عملاء مستحق لنا، موردون مستحق لهم.
+  Future<Map<String, dynamic>> getNotifications(int companyId) async {
+    return (await _get('/companies/$companyId/notifications', cacheKey: 'notifications'))
+        as Map<String, dynamic>;
+  }
+
   // ---------------------------------------------------------------- reports
   Future<Map<String, dynamic>> getTrialBalance(int companyId) async =>
       (await _get('/companies/$companyId/reports/trial-balance', cacheKey: 'trial_balance')) as Map<String, dynamic>;

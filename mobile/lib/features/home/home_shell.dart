@@ -20,6 +20,10 @@ import '../settings/settings_screen.dart';
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
+  /// مفتاح موحّد لجذر التطبيق: كل أزرار القائمة الجانبية تفتحه عبره حتى
+  /// تعمل من داخل Scaffolds متداخلة (كل شاشة لها Scaffold خاص بها).
+  static final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
+
   static const sections = <(String, IconData)>[
     ('الرئيسية', Icons.home_rounded),
     ('المبيعات', Icons.receipt_long_rounded),
@@ -45,6 +49,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final session = AppSession.instance;
     return Scaffold(
+      key: HomeShell.scaffoldKey,
       drawer: AppDrawer(
         sections: HomeShell.sections,
         current: _current,
@@ -53,6 +58,9 @@ class _HomeShellState extends State<HomeShell> {
         companyName: session.companyName ?? '',
         onLogout: () => AppSession.instance.logout(),
       ),
+      // الشاشات الداخلية تستخدم Scaffold خاص بها؛ منع تورّط Drawer الجذر
+      // في كل Scaffold داخلي — وإلا فُتح Drawer لكل شاشة صغيرة على حدة.
+      drawerEnableOpenGesture: false,
       body: Column(
         children: [
           const _SyncBanner(),
@@ -140,29 +148,32 @@ class _SyncBanner extends StatelessWidget {
 
 /// شريط علوي موحد: (زر القائمة أو رجوع) + العنوان + (اختياري) أزرار.
 /// كل شاشة تستخدمه لتطابق المرجع.
+///
+/// [showMenu] (افتراضي true) يعرض زر القائمة الذي يفتح الدرج الجذري عبر
+/// HomeShell.scaffoldKey — يعمل من داخل أي Scaffold متداخل. الشاشات المفتوحة
+/// فوق الـ Shell (كشف حساب مثلًا) تمرر false لتظهر زر رجوع بدلًا منه.
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
-  const AppHeader({super.key, this.title, this.actions = const []});
+  const AppHeader({super.key, this.title, this.actions = const [], this.showMenu = true});
   final String? title;
   final List<Widget> actions;
+  final bool showMenu;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
   @override
   Widget build(BuildContext context) {
-    final scaffold = Scaffold.maybeOf(context);
-    final hasDrawer = scaffold?.hasDrawer ?? false;
     return AppBar(
       centerTitle: true,
       backgroundColor: AppColors.background,
       foregroundColor: AppColors.navy,
       elevation: 0,
-      leading: hasDrawer
-          ? Builder(
-              builder: (ctx) => IconButton(
-                icon: const Icon(Icons.menu, color: AppColors.navy),
-                onPressed: () => Scaffold.of(ctx).openDrawer(),
-              ),
+      automaticallyImplyLeading: false,
+      leading: showMenu
+          ? IconButton(
+              tooltip: 'القائمة',
+              icon: const Icon(Icons.menu, color: AppColors.navy),
+              onPressed: () => HomeShell.scaffoldKey.currentState?.openDrawer(),
             )
           : const BackButton(),
       title: Row(

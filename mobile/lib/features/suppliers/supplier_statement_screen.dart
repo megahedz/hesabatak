@@ -32,7 +32,7 @@ class _SupplierStatementScreenState extends State<SupplierStatementScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppHeader(title: 'كشف حساب: ${widget.supplierName}'),
+      appBar: AppHeader(title: 'كشف حساب: ${widget.supplierName}', showMenu: false),
       body: FutureBuilder<Statement>(
         future: _future,
         builder: (context, snapshot) {

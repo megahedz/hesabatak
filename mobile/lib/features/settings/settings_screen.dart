@@ -6,6 +6,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../dashboard/dashboard_screen.dart' show showBackupSheet;
 import '../home/home_shell.dart';
+import 'team_screen.dart';
 
 /// الإعدادات — بيانات المشروع، إعدادات الضريبة والمخزون والسنة المالية،
 /// النسخ الاحتياطي والاستعادة، وتسجيل الخروج — بنفس نظام التصميم.
@@ -29,6 +30,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   bool _failed = false;
   bool _saving = false;
+
+  // Phase 7: دور المستخدم يحدد ماذا يرى ويفعل في هذه الشاشة.
+  String _role = 'staff';
+  List<String> _permissions = const [];
+  bool get _canManageSettings => _permissions.contains('manage_settings');
+  bool get _isOwner => _role == 'owner';
 
   static const _months = <(String, int)>[
     ('يناير', 1), ('فبراير', 2), ('مارس', 3), ('أبريل', 4),
@@ -56,7 +63,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _failed = false;
     });
     try {
-      final s = await _api.getSettings(AppConfig.companyId);
+      final results = await Future.wait([
+        _api.getSettings(AppConfig.companyId),
+        _api.getMyMembership(AppConfig.companyId),
+      ]);
+      final s = results[0] as Map<String, dynamic>;
+      final me = results[1] as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
         _name.text = s['name'] as String? ?? '';
@@ -65,6 +77,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _vatRate.text = s['vat_rate'] as String? ?? '14';
         _inventoryEnabled = s['inventory_enabled'] == true;
         _fiscalStart = (s['fiscal_year_start_month'] as num?)?.toInt() ?? 1;
+        _role = me['role'] as String? ?? 'staff';
+        _permissions = (me['permissions'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList();
         _loading = false;
       });
     } catch (_) {
@@ -160,7 +176,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 14),
 
-                      // ===== الضريبة والمخزون =====
+                      // ===== فريق العمل (الإدارة للمالك فقط) =====
+                      SectionCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const IconTile(
+                                icon: Icons.groups_rounded,
+                                background: AppColors.greenTint,
+                                color: AppColors.green,
+                                size: 42,
+                              ),
+                              title: const Text('فريق العمل',
+                                  style: TextStyle(
+                                      fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.navy)),
+                              subtitle: Text(
+                                _isOwner
+                                    ? 'أضف محاسبًا أو موظفًا وحدد صلاحياته'
+                                    : 'عرض أعضاء المشروع وأدوارهم',
+                                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                              ),
+                              trailing: const Icon(Icons.chevron_left, color: AppColors.textSecondary),
+                              onTap: () => Navigator.of(context)
+                                  .push(MaterialPageRoute(builder: (_) => const TeamScreen())),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ===== الضريبة والمخزون (التعديل للمالك فقط) =====
                       SectionCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,10 +226,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.navy)),
                               ],
                             ),
+                            if (!_canManageSettings) ...[
+                              const SizedBox(height: 8),
+                              const Text(
+                                'عرض فقط — تعديل الإعدادات من صلاحيات مالك المشروع.',
+                                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                              ),
+                            ],
                             const SizedBox(height: 14),
                             SwitchListTile(
                               value: _vatEnabled,
-                              onChanged: (v) => setState(() => _vatEnabled = v),
+                              onChanged: _canManageSettings ? (v) => setState(() => _vatEnabled = v) : null,
                               contentPadding: EdgeInsets.zero,
                               title: const Text('تفعيل ضريبة القيمة المضافة',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
@@ -200,7 +254,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ],
                             SwitchListTile(
                               value: _inventoryEnabled,
-                              onChanged: (v) => setState(() => _inventoryEnabled = v),
+                              onChanged: _canManageSettings ? (v) => setState(() => _inventoryEnabled = v) : null,
                               contentPadding: EdgeInsets.zero,
                               title: const Text('تفعيل المخزون',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
@@ -225,7 +279,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SizedBox(height: 14),
 
                       // ===== حفظ =====
-                      FilledButton.icon(
+                      if (!_canManageSettings)
+                        const SizedBox.shrink()
+                      else
+                        FilledButton.icon(
                         onPressed: _saving ? null : _save,
                         icon: _saving
                             ? const SizedBox(

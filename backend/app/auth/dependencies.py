@@ -60,3 +60,31 @@ def verify_company_access(
         # user just isn't a member of it — don't leak which companies exist.
         raise HTTPException(status_code=404, detail="الشركة غير موجودة.")
     return membership
+
+
+# ----------------------------------------------------------------- roles (Phase 7)
+# What each role may do, in plain Arabic the UI can also display.
+ROLE_PERMISSIONS = {
+    "owner": {
+        "view", "record", "manage_team", "manage_settings", "export", "backup",
+    },
+    "accountant": {"view", "record", "export", "backup"},
+    "staff": {"view"},
+}
+
+
+class RoleChecker:
+    """FastAPI dependency factory: RoleChecker("manage_team") rejects the
+    call with 403 unless the caller's company role carries that permission.
+    Reading (GET) stays open to every member; this only guards mutations."""
+
+    def __init__(self, permission: str):
+        self.permission = permission
+
+    def __call__(self, membership: CompanyUser = Depends(verify_company_access)) -> CompanyUser:
+        if self.permission not in ROLE_PERMISSIONS.get(membership.role, set()):
+            raise HTTPException(
+                status_code=403,
+                detail="صلاحيتك لا تسمح بهذه العملية. تواصل مع مدير النظام.",
+            )
+        return membership
