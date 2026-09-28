@@ -33,8 +33,18 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------- auth
-  Future<Map<String, dynamic>> register({required String fullName, required String phone, required String password}) {
-    return _post('/auth/register', {'full_name': fullName, 'phone': phone, 'password': password}, useQueryParams: true);
+  Future<Map<String, dynamic>> register({
+    required String fullName,
+    required String phone,
+    required String email,
+    required String password,
+  }) {
+    return _post('/auth/register', {
+      'full_name': fullName,
+      'phone': phone,
+      'email': email,
+      'password': password,
+    }, useQueryParams: true);
   }
 
   /// Login uses OAuth2's standard form-body shape (spec: JWT auth), not

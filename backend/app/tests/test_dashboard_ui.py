@@ -20,7 +20,8 @@ client = TestClient(app)
 def _setup_company():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-    client.post("/auth/register", params={"full_name": "مستخدم", "phone": "01000000099", "password": "secret123"})
+    client.post("/auth/register", params={"full_name": "مستخدم", "phone": "01000000099",
+                                          "email": "u99@example.com", "password": "secret123"})
     token = client.post("/auth/login", data={"username": "01000000099", "password": "secret123"}).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     company_id = client.post("/companies", params={"name": "شركة الواجهة"}, headers=headers).json()["id"]
@@ -151,8 +152,10 @@ def test_roles_block_and_allow_operations():
     headers, cid = _setup_company()
 
     # Register two more users to invite into the company.
-    client.post("/auth/register", params={"full_name": "محاسب", "phone": "01000000091", "password": "secret123"})
-    client.post("/auth/register", params={"full_name": "موظف", "phone": "01000000092", "password": "secret123"})
+    client.post("/auth/register", params={"full_name": "محاسب", "phone": "01000000091",
+                                          "email": "acc91@example.com", "password": "secret123"})
+    client.post("/auth/register", params={"full_name": "موظف", "phone": "01000000092",
+                                          "email": "staff92@example.com", "password": "secret123"})
 
     # Owner adds an accountant and a staff member.
     res = client.post(f"/companies/{cid}/team/add", params={"phone": "01000000091", "role": "accountant"}, headers=headers)

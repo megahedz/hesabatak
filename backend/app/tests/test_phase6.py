@@ -309,7 +309,8 @@ def _setup_company_with_one_sale() -> tuple[str, int]:
     _http_counter[0] += 1
     phone = f"0110{_http_counter[0]:08d}"
     res = http_client.post("/auth/register",
-                           params={"full_name": "مستخدم SIX", "phone": phone, "password": "secret123"})
+                           params={"full_name": "مستخدم SIX", "phone": phone,
+                                   "email": f"{phone}@example.com", "password": "secret123"})
     assert res.status_code == 200, res.text
     token = res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -395,7 +396,8 @@ def test_http_new_endpoints_require_membership():
     import random
     other_phone = f"0122{random.randint(0, 99999999):08d}"
     other = http_client.post("/auth/register",
-                             params={"full_name": "غريب", "phone": other_phone, "password": "secret123"})
+                             params={"full_name": "غريب", "phone": other_phone,
+                                     "email": f"{other_phone}@example.com", "password": "secret123"})
     other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
     for path in (f"/companies/{cid}/reports/sales", f"/companies/{cid}/backup"):
         res = http_client.get(path, headers=other_headers)

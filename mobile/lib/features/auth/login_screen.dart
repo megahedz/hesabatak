@@ -18,6 +18,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
   final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isRegisterMode = false;
@@ -27,10 +28,49 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   bool _isNetworkError = false;
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  /// تحقق محلي من صيغة البريد — نفس القاعدة المطبقة على السيرفر.
+  static final RegExp _emailRe = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
+  /// مؤشر قوة كلمة المرور (0..3): طول 8+ وحرف ورقم.
+  int get _passwordStrength {
+    final p = _passwordController.text;
+    if (p.isEmpty) return 0;
+    var score = 0;
+    if (p.length >= 8) score++;
+    if (p.contains(RegExp(r'[A-Za-z]'))) score++;
+    if (p.contains(RegExp(r'\d'))) score++;
+    return score;
+  }
+
   Future<void> _submit() async {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text;
-    if (phone.isEmpty || password.isEmpty || (_isRegisterMode && _nameController.text.trim().isEmpty)) {
+    final email = _emailController.text.trim();
+    if (_isRegisterMode && _nameController.text.trim().isEmpty) {
+      setState(() => _error = 'من فضلك أكمل كل البيانات المطلوبة');
+      return;
+    }
+    // البريد إجباري عند إنشاء الحساب (spec: إجباري مقترح ✓)
+    if (_isRegisterMode && !_emailRe.hasMatch(email)) {
+      setState(() => _error = 'من فضلك أدخل بريدًا إلكترونيًا صحيحًا (مثال: name@example.com)');
+      return;
+    }
+    // تحقق محلي من كلمة المرور قبل إرسال أي شيء للسيرفر
+    if (_isRegisterMode &&
+        (password.length < 8 || !password.contains(RegExp(r'[A-Za-z]')) || !password.contains(RegExp(r'\d')))) {
+      setState(() => _error = 'كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف ورقم واحد على الأقل');
+      return;
+    }
+    if (phone.isEmpty || password.isEmpty) {
       setState(() => _error = 'من فضلك أكمل كل البيانات المطلوبة');
       return;
     }
@@ -41,12 +81,14 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       final result = _isRegisterMode
-          ? await _api.register(fullName: _nameController.text.trim(), phone: phone, password: password)
+          ? await _api.register(
+              fullName: _nameController.text.trim(), phone: phone, email: email, password: password)
           : await _api.login(phone: phone, password: password);
 
       AppSession.instance.setAuth(
         token: result['access_token'] as String,
         userName: _isRegisterMode ? _nameController.text.trim() : phone,
+        userEmail: _isRegisterMode ? email : null,
       );
 
       await _resolveActiveCompany();
@@ -169,9 +211,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         if (_isRegisterMode) ...[
                           TextField(
                             controller: _nameController,
+                            textInputAction: TextInputAction.next,
                             decoration: const InputDecoration(
                               labelText: 'الاسم',
                               prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            autocorrect: false,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'البريد الإلكتروني',
+                              hintText: 'name@example.com',
+                              prefixIcon: Icon(Icons.alternate_email),
                             ),
                           ),
                           const SizedBox(height: 14),
@@ -179,6 +234,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextField(
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,
+                          textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
                             labelText: 'اسم المستخدم (رقم الهاتف)',
                             prefixIcon: Icon(Icons.person_outline),
@@ -188,8 +244,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextField(
                           controller: _passwordController,
                           obscureText: _obscure,
+                          onChanged: (_) => setState(() {}),
                           decoration: InputDecoration(
-                            labelText: 'كلمة المرور',
+                            labelText: _isRegisterMode ? 'كلمة المرور (8 أحرف على الأقل مع رقم)' : 'كلمة المرور',
                             prefixIcon: const Icon(Icons.lock_outline),
                             suffixIcon: IconButton(
                               icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
@@ -197,6 +254,38 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
+                        if (_isRegisterMode && _passwordController.text.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              for (var i = 0; i < 3; i++)
+                                Expanded(
+                                  child: Container(
+                                    height: 4,
+                                    margin: EdgeInsetsDirectional.only(end: i == 2 ? 0 : 6),
+                                    decoration: BoxDecoration(
+                                      color: i < _passwordStrength
+                                          ? (_passwordStrength == 1
+                                              ? AppColors.red
+                                              : _passwordStrength == 2
+                                                  ? AppColors.amber
+                                                  : AppColors.green)
+                                          : AppColors.greyTint,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _passwordStrength < 2 ? 'كلمة مرور ضعيفة' : 'كلمة مرور جيدة',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _passwordStrength < 2 ? AppColors.red : AppColors.green,
+                            ),
+                          ),
+                        ],
                         if (_error != null) ...[
                           const SizedBox(height: 12),
                           SelectableText(_error!,

@@ -600,6 +600,18 @@ class AppDrawer extends StatelessWidget {
                   const SizedBox(width: 10),
                   const Text('حساباتك',
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.blueTint,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'v0.7.2',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
+                    ),
+                  ),
                 ],
               ),
             ),

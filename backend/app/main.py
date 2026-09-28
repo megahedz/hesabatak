@@ -7,6 +7,7 @@ spec §44/§6. /auth/register and /auth/login are open; POST /companies
 requires login (creates the company AND makes the caller its owner).
 """
 import os
+import re
 from datetime import date
 from decimal import Decimal
 from typing import Optional
@@ -71,15 +72,25 @@ def _friendly_error(e: Exception, db: Session):
 # ======================================================================
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
+# تحقق بسيط من صيغة البريد الإلكتروني: نص@نص.نطاق (بدون فراغات وبدون @ مزدوج).
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 
 @auth_router.post("/register")
-def register(full_name: str, phone: str, password: str, db: Session = Depends(get_db)):
-    if len(password) < 6:
-        raise HTTPException(400, "كلمة المرور يجب أن تكون 6 أحرف على الأقل.")
+def register(full_name: str, phone: str, email: str, password: str, db: Session = Depends(get_db)):
+    # البريد الإجباري: يُطبَّع (أحرف صغيرة/بدون فراغات) ثم يُتحقق من صيغته.
+    email = email.strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(400, "البريد الإلكتروني غير صالح. مثال: name@example.com")
+    # سياسة كلمة مرور أقوى: 8 أحرف على الأقل وتحتوي حرفًا ورقمًا.
+    if len(password) < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+        raise HTTPException(400, "كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف ورقم واحد على الأقل.")
     existing = db.query(User).filter(User.phone == phone).one_or_none()
     if existing is not None:
         raise HTTPException(400, "رقم الهاتف مستخدم بالفعل.")
-    user = User(full_name=full_name, phone=phone, password_hash=hash_password(password))
+    if db.query(User).filter(User.email == email).one_or_none() is not None:
+        raise HTTPException(400, "البريد الإلكتروني مستخدم بالفعل.")
+    user = User(full_name=full_name, phone=phone, email=email, password_hash=hash_password(password))
     db.add(user)
     db.commit()
     token = create_access_token(user_id=user.id)
@@ -98,7 +109,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 @auth_router.get("/me")
 def me(current_user: User = Depends(get_current_user)):
-    return {"id": current_user.id, "full_name": current_user.full_name, "phone": current_user.phone}
+    return {"id": current_user.id, "full_name": current_user.full_name, "phone": current_user.phone,
+            "email": current_user.email}
 
 
 # ======================================================================

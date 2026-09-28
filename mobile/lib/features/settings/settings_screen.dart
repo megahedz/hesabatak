@@ -340,8 +340,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           title: Text(session.userName ?? 'مستخدم',
                               style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
-                          subtitle: Text(session.companyName ?? '',
-                              style: const TextStyle(fontSize: 12)),
+                          subtitle: Text(
+                            session.userEmail != null && session.userEmail!.isNotEmpty
+                                ? session.userEmail!
+                                : (session.companyName ?? ''),
+                            style: const TextStyle(fontSize: 12),
+                          ),
                           trailing: Text('إصدار ${AppConfig.appVersion}',
                               style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                         ),

@@ -19,25 +19,32 @@ class AppSession extends ChangeNotifier {
   static const _kCompanyId = 'hesabatak_company_id';
   static const _kCompanyName = 'hesabatak_company_name';
   static const _kUserName = 'hesabatak_user_name';
+  static const _kUserEmail = 'hesabatak_user_email';
 
   String? _token;
   int? _companyId;
   String? _companyName;
   String? _userName;
+  String? _userEmail;
 
   String? get token => _token;
   int? get companyId => _companyId;
   String? get companyName => _companyName;
   String? get userName => _userName;
+  String? get userEmail => _userEmail;
   bool get isLoggedIn => _token != null;
   bool get hasActiveCompany => _companyId != null;
 
-  Future<void> setAuth({required String token, required String userName}) async {
+  Future<void> setAuth({required String token, required String userName, String? userEmail}) async {
     _token = token;
     _userName = userName;
+    _userEmail = userEmail;
     notifyListeners();
     await _storage.write(key: _kToken, value: token);
     await _storage.write(key: _kUserName, value: userName);
+    if (userEmail != null) {
+      await _storage.write(key: _kUserEmail, value: userEmail);
+    }
   }
 
   Future<void> setActiveCompany({required int id, required String name}) async {
@@ -56,6 +63,7 @@ class AppSession extends ChangeNotifier {
       if (token == null) return;
       _token = token;
       _userName = await _storage.read(key: _kUserName);
+      _userEmail = await _storage.read(key: _kUserEmail);
       final companyIdStr = await _storage.read(key: _kCompanyId);
       if (companyIdStr != null) {
         _companyId = int.tryParse(companyIdStr);
@@ -74,6 +82,7 @@ class AppSession extends ChangeNotifier {
     _companyId = null;
     _companyName = null;
     _userName = null;
+    _userEmail = null;
     notifyListeners();
     try {
       await _storage.deleteAll();

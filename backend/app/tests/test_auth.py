@@ -23,8 +23,13 @@ def fresh_db():
     yield
 
 
-def _register(phone: str, name: str = "مستخدم", password: str = "secret123") -> str:
-    res = client.post("/auth/register", params={"full_name": name, "phone": phone, "password": password})
+def _register(phone: str, name: str = "مستخدم", password: str = "secret123",
+              email: str | None = None) -> str:
+    """Each call gets a unique email unless one is passed explicitly."""
+    if email is None:
+        email = f"{phone}@example.com"
+    res = client.post("/auth/register", params={"full_name": name, "phone": phone,
+                                                "email": email, "password": password})
     assert res.status_code == 200, res.text
     return res.json()["access_token"]
 
@@ -97,5 +102,50 @@ def test_list_my_companies_only_shows_own():
 
 def test_duplicate_phone_registration_rejected():
     _register("01000000008")
-    res = client.post("/auth/register", params={"full_name": "آخر", "phone": "01000000008", "password": "whatever1"})
+    res = client.post("/auth/register", params={"full_name": "آخر", "phone": "01000000008",
+                                                "email": "other@example.com", "password": "whatever1"})
     assert res.status_code == 400
+
+
+# ------------------------------------------------- البريد الإجباري + سياسة كلمة المرور
+def test_register_without_email_rejected():
+    res = client.post("/auth/register", params={"full_name": "بلا بريد", "phone": "01000000010",
+                                                "password": "secret123"})
+    assert res.status_code == 422  # FastAPI missing required query param
+
+
+def test_register_invalid_email_rejected():
+    for bad in ("not-an-email", "a@b", "a b@example.com", "@example.com"):
+        res = client.post("/auth/register", params={"full_name": "صيغة خطأ", "phone": "01000000011",
+                                                    "email": bad, "password": "secret123"})
+        assert res.status_code == 400, bad
+
+
+def test_register_duplicate_email_rejected_and_normalized():
+    _register("01000000012", email="User@Example.com")
+    # نفس البريد بأحرف كبيرة/فراغات يُطبَّع ويصطدم بالسجل الأول.
+    res = client.post("/auth/register", params={"full_name": "مكرر", "phone": "01000000013",
+                                                "email": "  USER@example.com ", "password": "secret123"})
+    assert res.status_code == 400
+    # بريد مختلف ينجح ويُخزَّن بحروف صغيرة.
+    token = _register("01000000014", email="Clean@Example.COM")
+    assert token
+
+
+def test_weak_password_rejected():
+    for weak in ("short1", "allletters", "12345678", "87654321"):
+        res = client.post("/auth/register", params={"full_name": "ضعيف", "phone": "01000000015",
+                                                    "email": "weak@example.com", "password": weak})
+        assert res.status_code == 400, weak
+    # حرف + رقم و8 أحرف → يُقبل.
+    res = client.post("/auth/register", params={"full_name": "قوي", "phone": "01000000016",
+                                                "email": "strong@example.com", "password": "abc12345"})
+    assert res.status_code == 200, res.text
+
+
+def test_me_returns_email():
+    _register("01000000017", email="me@example.com")
+    res = client.post("/auth/login", data={"username": "01000000017", "password": "secret123"})
+    headers = {"Authorization": f"Bearer {res.json()['access_token']}"}
+    me = client.get("/auth/me", headers=headers).json()
+    assert me["email"] == "me@example.com"
