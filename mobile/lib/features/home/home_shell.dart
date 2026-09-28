@@ -58,9 +58,6 @@ class _HomeShellState extends State<HomeShell> {
         companyName: session.companyName ?? '',
         onLogout: () => AppSession.instance.logout(),
       ),
-      // الشاشات الداخلية تستخدم Scaffold خاص بها؛ منع تورّط Drawer الجذر
-      // في كل Scaffold داخلي — وإلا فُتح Drawer لكل شاشة صغيرة على حدة.
-      drawerEnableOpenGesture: false,
       body: Column(
         children: [
           const _SyncBanner(),
