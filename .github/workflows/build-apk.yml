@@ -20,25 +20,15 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.0"
+          # 3.35 ships a modern Kotlin Gradle plugin (2.x) + AGP/SDK 36, so no
+          # Kotlin/compileSdk patching is needed for the Phase 6 plugins
+          # (connectivity_plus, share_plus, flutter_secure_storage...).
+          flutter-version: "3.35.0"
           channel: "stable"
 
       - name: Generate missing Android platform scaffold
         working-directory: mobile
         run: flutter create --platforms=android --org com.hesabatak .
-
-      # flutter create (Flutter 3.24.0) stamps Kotlin Gradle plugin 1.7.10 into
-      # android/settings.gradle, but flutter_secure_storage pulls in
-      # kotlin-stdlib 1.9.24 whose 1.9.0 metadata the 1.7.10 compiler cannot
-      # read -> ":app:compileReleaseKotlin" fails with "Module was compiled
-      # with an incompatible version of Kotlin". Bump the plugin so the
-      # compiler can read the stdlib's metadata.
-      - name: Bump Kotlin Gradle plugin to 1.9.24
-        working-directory: mobile
-        run: |
-          sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle
-          grep 'org.jetbrains.kotlin.android' android/settings.gradle
-          grep -q 'version "1.9.24"' android/settings.gradle || { echo '::error::Kotlin bump did not apply'; exit 1; }
 
       - name: Install dependencies
         working-directory: mobile
@@ -63,21 +53,6 @@ jobs:
           grep -q 'android.permission.INTERNET' $M || sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' $M
           echo "--- manifest check ---"
           grep -n 'android:label\|permission.INTERNET' $M
-
-      - name: Patch share_plus calls for the older API in this Flutter version
-        working-directory: mobile
-        run: |
-          F=lib/features/reports/export_service.dart
-          if [ -f "$F" ]; then
-            python3 - <<'EOF'
-          import re
-          p = "lib/features/reports/export_service.dart"
-          s = open(p, encoding="utf-8").read()
-          s = re.sub(r"SharePlus\.instance\.share\(\s*ShareParams\(files:\s*\[XFile\(path\)\],\s*text:\s*('[^']*')\s*,?\s*\)\s*,?\s*\)", r"Share.shareXFiles([XFile(path)], text: \1)", s)
-          open(p, "w", encoding="utf-8").write(s)
-          EOF
-            echo "remaining old-API references: $(grep -c 'SharePlus\|ShareParams' $F || true)"
-          fi
 
       - name: Build release APK
         working-directory: mobile
