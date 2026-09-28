@@ -51,12 +51,6 @@ jobs:
           echo "--- manifest check ---"
           grep -n 'android:label\|permission.INTERNET' $M
 
-      - name: Raise compileSdk to 35 (required by newer plugins)
-        working-directory: mobile
-        run: |
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' android/app/build.gradle
-          grep -n compileSdk android/app/build.gradle
-
       - name: Patch share_plus calls for the older API in this Flutter version
         working-directory: mobile
         run: |
