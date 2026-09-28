@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 // show NumberFormat: بدون هذا، TextDirection الخاص بـ intl يطغى على TextDirection
@@ -26,8 +27,9 @@ class AppFmt {
   }
 }
 
-/// شعار حساباتك: أعمدة بيانية صاعدة بسهم — مرسوم بالكود ليطابق المرجع
-/// (أعمدة زرقاء + عمود أخضر + سهم برتقالي صاعد) داخل أيقونة بيضاء بحواف دائرية.
+/// شعار حساباتك: حرف M كحلي بأعمدة بيانية ودائرة إلكترونية وسهم صاعد بتدرج
+/// أخضر→تركوازي — مطابق لأيقونة التطبيق (assets/icon/icon.png) المرسومة
+/// بالكود في mobile/assets/icon/generate_icon.py.
 class HesabatakLogo extends StatelessWidget {
   const HesabatakLogo({super.key, this.size = 64});
   final double size;
@@ -58,38 +60,108 @@ class _LogoPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width, h = size.height;
-    final barW = w * 0.155;
-    final r = Radius.circular(barW * 0.45);
+    final r = Radius.circular(w * 0.02);
 
-    // الأعمدة: زرقي، أزرق، كحلي، أخضر
+    // ---- الكتلة اليسرى: أعمدة بيانية صاعدة داخل مستطيل كحلي بتدرج
+    final leftRect = Rect.fromLTWH(w * 0.16, h * 0.34, w * 0.24, h * 0.58);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(leftRect, r),
+      Paint()
+        ..shader = ui.Gradient.linear(
+          leftRect.topCenter,
+          leftRect.bottomCenter,
+          const [Color(0xFF184070), Color(0xFF0D284C)],
+        ),
+    );
+    // الأعمدة: تركوازي، أزرق، أزرق فاتح
     final bars = [
-      (Rect.fromLTWH(w * 0.10, h * 0.52, barW, h * 0.38), const Color(0xFF5B9BEA)),
-      (Rect.fromLTWH(w * 0.30, h * 0.38, barW, h * 0.52), const Color(0xFF2E7CD6)),
-      (Rect.fromLTWH(w * 0.50, h * 0.24, barW, h * 0.66), const Color(0xFF164E8F)),
-      (Rect.fromLTWH(w * 0.70, h * 0.44, barW, h * 0.46), const Color(0xFF27A567)),
+      (Rect.fromLTWH(w * 0.195, h * 0.58, w * 0.045, h * 0.30), const Color(0xFF4FC3A1)),
+      (Rect.fromLTWH(w * 0.26, h * 0.48, w * 0.045, h * 0.40), const Color(0xFF3E9BD8)),
+      (Rect.fromLTWH(w * 0.325, h * 0.40, w * 0.045, h * 0.48), const Color(0xFF7FC4EE)),
     ];
     for (final (rect, color) in bars) {
       canvas.drawRRect(RRect.fromRectAndRadius(rect, r), Paint()..color = color);
     }
 
-    // السهم الصاعد البرتقالي
-    final arrow = Paint()
-      ..color = const Color(0xFFF2A93B)
-      ..strokeWidth = w * 0.09
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    final path = Path()
-      ..moveTo(w * 0.16, h * 0.34)
-      ..lineTo(w * 0.52, h * 0.10)
-      ..lineTo(w * 0.66, h * 0.18);
-    canvas.drawPath(path, arrow);
-    // رأس السهم
+    // ---- الكتلة اليمنى: نمط دائرة إلكترونية داخل مستطيل كحلي بتدرج
+    final rightRect = Rect.fromLTWH(w * 0.60, h * 0.62, w * 0.23, h * 0.30);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rightRect, r),
+      Paint()
+        ..shader = ui.Gradient.linear(
+          rightRect.topCenter,
+          rightRect.bottomCenter,
+          const [Color(0xFF184070), Color(0xFF0D284C)],
+        ),
+    );
+    final circuit = Paint()
+      ..color = const Color(0xFF3FC6E8)
+      ..strokeWidth = w * 0.014
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    // خطوط الدائرة: منتصف يسار → أعلى، منتصف → يمين أعلى، منتصف → أسفل
+    final cLines = [
+      (Offset(w * 0.668, h * 0.66), Offset(w * 0.668, h * 0.86)),
+      (Offset(w * 0.668, h * 0.72), Offset(w * 0.726, h * 0.76)),
+      (Offset(w * 0.726, h * 0.76), Offset(w * 0.771, h * 0.72)),
+      (Offset(w * 0.668, h * 0.82), Offset(w * 0.72, h * 0.87)),
+    ];
+    for (final (a, b) in cLines) {
+      canvas.drawLine(a, b, circuit);
+    }
+    // عقد الدائرة: حلقات فارغة ونقاط ممتلئة
+    final ringPaint = Paint()
+      ..color = const Color(0xFF3FC6E8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.014;
+    for (final c in [Offset(w * 0.668, h * 0.655), Offset(w * 0.771, h * 0.715), Offset(w * 0.72, h * 0.875)]) {
+      canvas.drawCircle(c, w * 0.024, ringPaint);
+    }
+    final dotPaint = Paint()..color = const Color(0xFF3FC6E8);
+    for (final c in [Offset(w * 0.668, h * 0.72), Offset(w * 0.668, h * 0.82), Offset(w * 0.726, h * 0.76)]) {
+      canvas.drawCircle(c, w * 0.011, dotPaint);
+    }
+
+    // ---- شريط النمو المتدرج (أخضر→تركوازي) بقناة فصل بيضاء + خط أخضر مزدوج
+    Path ribbon() => Path()
+      ..moveTo(w * 0.13, h * 0.90)
+      ..lineTo(w * 0.50, h * 0.42)
+      ..lineTo(w * 0.60, h * 0.58)
+      ..lineTo(w * 0.83, h * 0.14);
+
+    // الخط الأخضر المزدوج أسفل الجزء الأول (خلفية بيضاء ثم أخضر)
+    final under = Path()
+      ..moveTo(w * 0.155, h * 0.955)
+      ..lineTo(w * 0.525, h * 0.475);
+    canvas.drawPath(under, Paint()..color = Colors.white..strokeWidth = w * 0.085..strokeCap = StrokeCap.round..style = PaintingStyle.stroke);
+    canvas.drawPath(under, Paint()..color = const Color(0xFF2AA46B)..strokeWidth = w * 0.058..strokeCap = StrokeCap.round..style = PaintingStyle.stroke);
+
+    // الشريط الرئيسي: قناة بيضاء ثم تدرج أخضر→تركوازي→أخضر
+    canvas.drawPath(ribbon(), Paint()..color = Colors.white..strokeWidth = w * 0.088..strokeCap = StrokeCap.round..style = PaintingStyle.stroke);
+    canvas.drawPath(
+      ribbon(),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.062
+        ..strokeCap = StrokeCap.round
+        ..shader = ui.Gradient.linear(
+          Offset(w * 0.13, h * 0.90),
+          Offset(w * 0.83, h * 0.14),
+          const [Color(0xFF8FE8A0), Color(0xFF2EC9D8), Color(0xFF35D89A)],
+        ),
+    );
+
+    // ---- رأس السهم عند نهاية الشريط
+    const tipFrac = Offset(0.875, 0.085);
+    const aFrac = Offset(0.815, 0.155);
+    const bFrac = Offset(0.795, 0.045);
+    Offset f(Offset o) => Offset(w * o.dx, h * o.dy);
     final head = Path()
-      ..moveTo(w * 0.60, h * 0.06)
-      ..lineTo(w * 0.70, h * 0.19)
-      ..lineTo(w * 0.55, h * 0.24)
+      ..moveTo(f(tipFrac).dx, f(tipFrac).dy)
+      ..lineTo(f(aFrac).dx, f(aFrac).dy)
+      ..lineTo(f(bFrac).dx, f(bFrac).dy)
       ..close();
-    canvas.drawPath(head, Paint()..color = const Color(0xFFF2A93B));
+    canvas.drawPath(head, Paint()..color = const Color(0xFF2FA0E6));
   }
 
   @override
