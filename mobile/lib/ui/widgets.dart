@@ -337,6 +337,7 @@ class SalesBarChart extends StatelessWidget {
           ],
         ),
       ],
+      ),
     );
   }
 
