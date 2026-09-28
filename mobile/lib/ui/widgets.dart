@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+// show NumberFormat: بدون هذا، TextDirection الخاص بـ intl يطغى على TextDirection
+// الخاص بـ Flutter (المطلوب في SalesBarChart).
+import 'package:intl/intl.dart' show NumberFormat;
 import 'theme.dart';
 
 /// تنسيق الأرقام بفواصل الآلاف وأرقام لاتينية (كما في التصميم المرجعي).
@@ -9,10 +11,19 @@ class AppFmt {
   AppFmt._();
   static final NumberFormat _fmt = NumberFormat('#,##0.##', 'en');
 
-  // المعلمة dynamic لتجنّب حجب النوع المدمج `num` داخل نفس الكلاس
-  // (اسم الدالة نفسه num). القيم المقبولة أرقام فقط في زمن التشغيل.
-  static String num(dynamic value) => _fmt.format(value as num);
-  static String money(dynamic value, {String currency = 'ج.م'}) => '${_fmt.format(value as num)} $currency';
+  /// المعلمة Object? عمدًا: اسم الدالة نفسه (num) يحجب النوع المدمج `num`
+  /// داخل هذا الكلاس، فلا يمكن ذكر النوع نصًا هنا.
+  static String num(Object? value) {
+    if (value is int) return _fmt.format(value);
+    if (value is double) return _fmt.format(value);
+    return _fmt.format(0);
+  }
+
+  static String money(Object? value, {String currency = 'ج.م'}) {
+    if (value is int) return '${_fmt.format(value)} $currency';
+    if (value is double) return '${_fmt.format(value)} $currency';
+    return '0 $currency';
+  }
 }
 
 /// شعار حساباتك: أعمدة بيانية صاعدة بسهم — مرسوم بالكود ليطابق المرجع
