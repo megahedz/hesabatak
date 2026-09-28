@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
+import '../../ui/theme.dart';
 import '../customers/customer_model.dart';
 import '../suppliers/supplier_model.dart';
 
@@ -12,7 +13,13 @@ void showQuickActionSheet(BuildContext context, {required String action, require
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-    builder: (_) => _buildFormFor(action, onDone),
+    builder: (_) {
+      final form = _buildFormFor(action, onDone);
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: form,
+      );
+    },
   );
 }
 
@@ -137,7 +144,7 @@ class _InvoiceFormState extends State<_InvoiceForm> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(widget.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(widget.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
           const SizedBox(height: 16),
           TextField(
             controller: _amountController,
@@ -293,7 +300,7 @@ class _PartyPaymentFormState extends State<_PartyPaymentForm> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(widget.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(widget.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
           const SizedBox(height: 16),
           if (_loadingParties)
             const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
@@ -396,7 +403,7 @@ class _SimpleAmountFormState extends State<_SimpleAmountForm> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(widget.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(widget.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
           const SizedBox(height: 16),
           TextField(
             controller: _amountController,
@@ -478,7 +485,7 @@ class _TransferFormState extends State<_TransferForm> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('تحويل بين الحسابات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text('تحويل بين الحسابات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             value: _fromCode,

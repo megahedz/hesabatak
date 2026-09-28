@@ -62,8 +62,9 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------- dashboard
-  Future<Map<String, dynamic>> getDashboard(int companyId) async {
-    return (await _get('/companies/$companyId/dashboard', cacheKey: 'dashboard')) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> getDashboard(int companyId, {DateTime? periodStart}) async {
+    final q = periodStart != null ? '?start=${periodStart.toIso8601String().substring(0, 10)}' : '';
+    return (await _get('/companies/$companyId/dashboard$q', cacheKey: 'dashboard')) as Map<String, dynamic>;
   }
 
   // ---------------------------------------------------------------- customers
@@ -87,6 +88,80 @@ class ApiClient {
 
   Future<Map<String, dynamic>> getCustomerStatement(int companyId, int customerId) async {
     return (await _get('/companies/$companyId/customers/$customerId/statement')) as Map<String, dynamic>;
+  }
+
+  /// Products for the invoice item pickers (اسم، سعر البيع، سعر الشراء، المخزون).
+  Future<List<dynamic>> getProducts(int companyId) async {
+    final res = await _get('/companies/$companyId/products');
+    return res as List<dynamic>;
+  }
+
+  /// Customer receivable balances: (customer_id → ledger balance).
+  Future<Map<int, double>> getCustomerBalances(int companyId) async {
+    final data = await _get('/companies/$companyId/customers/balances');
+    return (data as Map<String, dynamic>)
+        .map((k, v) => MapEntry(int.parse(k), (v as num).toDouble()));
+  }
+
+  /// Supplier payable balances: (supplier_id → ledger balance).
+  Future<Map<int, double>> getSupplierBalances(int companyId) async {
+    final data = await _get('/companies/$companyId/suppliers/balances');
+    return (data as Map<String, dynamic>)
+        .map((k, v) => MapEntry(int.parse(k), (v as num).toDouble()));
+  }
+
+  /// General-ledger rows for one account (الخزنة والبنك / الأصول الثابتة screens).
+  Future<Map<String, dynamic>> getGeneralLedger(int companyId, String accountCode) async {
+    return (await _get('/companies/$companyId/reports/general-ledger?account_code=$accountCode'))
+        as Map<String, dynamic>;
+  }
+
+  /// Company settings (VAT / inventory / fiscal year / name).
+  Future<Map<String, dynamic>> getSettings(int companyId) async {
+    return (await _get('/companies/$companyId/settings', cacheKey: 'settings')) as Map<String, dynamic>;
+  }
+
+  /// Partial settings update — only non-null fields are sent.
+  Future<Map<String, dynamic>> updateSettings(
+    int companyId, {
+    String? name,
+    String? businessType,
+    bool? vatEnabled,
+    double? vatRate,
+    bool? inventoryEnabled,
+    int? fiscalYearStartMonth,
+  }) {
+    return _post('/companies/$companyId/settings', {
+      if (name != null && name.trim().isNotEmpty) 'name': name,
+      if (businessType != null) 'business_type': businessType,
+      if (vatEnabled != null) 'vat_enabled': vatEnabled.toString(),
+      if (vatRate != null) 'vat_rate': vatRate.toString(),
+      if (inventoryEnabled != null) 'inventory_enabled': inventoryEnabled.toString(),
+      if (fiscalYearStartMonth != null) 'fiscal_year_start_month': fiscalYearStartMonth.toString(),
+    }, useQueryParams: true);
+  }
+
+  /// Creates a product. With opening stock > 0, the server requires a
+  /// purchase price and posts the stock value as owner capital.
+  Future<Map<String, dynamic>> createProduct(
+    int companyId, {
+    required String name,
+    String? sku,
+    String unit = 'قطعة',
+    double purchasePrice = 0,
+    double sellingPrice = 0,
+    double openingStockQty = 0,
+    double minimumStock = 0,
+  }) {
+    return _post('/companies/$companyId/products', {
+      'name': name,
+      if (sku != null && sku.trim().isNotEmpty) 'sku': sku,
+      'unit': unit,
+      'purchase_price': purchasePrice.toString(),
+      'selling_price': sellingPrice.toString(),
+      'opening_stock_qty': openingStockQty.toString(),
+      'minimum_stock': minimumStock.toString(),
+    }, useQueryParams: true);
   }
 
   // ---------------------------------------------------------------- suppliers
@@ -113,21 +188,31 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------- operations
+  /// [items] rows: {product_id, quantity, unit_price} — serialized as a JSON
+  /// string param so the offline sync queue (Map<String,String>) can carry it.
   Future<Map<String, dynamic>> postSale({
     required int companyId,
     required double amount,
     required bool isCredit,
     required String method,
     int? customerId,
+    double vatAmount = 0,
+    List<Map<String, dynamic>>? items,
   }) {
     return _post('/companies/$companyId/operations/sale', {
       'amount': amount.toString(),
       'is_credit': isCredit.toString(),
       'method': method,
+      'vat_amount': vatAmount.toString(),
       if (customerId != null) 'customer_id': customerId.toString(),
+      if (items != null && items.isNotEmpty) 'items_json': jsonEncode(items),
     }, useQueryParams: true);
   }
 
+  /// [items] rows: {product_id, quantity, unit_price} — same JSON-string
+  /// serialization as [postSale] (the offline queue is Map<String,String>).
+  /// When [items] is non-empty the server forces the purchase into inventory
+  /// and requires amount == sum of line totals.
   Future<Map<String, dynamic>> postPurchase({
     required int companyId,
     required double amount,
@@ -135,13 +220,17 @@ class ApiClient {
     required String method,
     int? supplierId,
     bool goesToInventory = false,
+    double vatAmount = 0,
+    List<Map<String, dynamic>>? items,
   }) {
     return _post('/companies/$companyId/operations/purchase', {
       'amount': amount.toString(),
       'is_credit': isCredit.toString(),
       'method': method,
       'goes_to_inventory': goesToInventory.toString(),
+      'vat_amount': vatAmount.toString(),
       if (supplierId != null) 'supplier_id': supplierId.toString(),
+      if (items != null && items.isNotEmpty) 'items_json': jsonEncode(items),
     }, useQueryParams: true);
   }
 
@@ -175,10 +264,12 @@ class ApiClient {
     required int companyId,
     required double amount,
     required String method,
+    String? expenseAccountCode,
   }) {
     return _post('/companies/$companyId/operations/expense', {
       'amount': amount.toString(),
       'method': method,
+      if (expenseAccountCode != null) 'expense_account_code': expenseAccountCode,
     }, useQueryParams: true);
   }
 

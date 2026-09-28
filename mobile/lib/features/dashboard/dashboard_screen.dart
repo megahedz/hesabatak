@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/session.dart';
+import '../../ui/theme.dart';
+import '../../ui/widgets.dart';
+import '../home/home_shell.dart';
 import '../operations/quick_actions_sheet.dart';
 import '../reports/export_service.dart';
 import 'dashboard_model.dart';
 
-/// The حساباتك home screen. Cards and wording match exactly what was
-/// requested — no literal-translation phrasing, just how an Egyptian shop
-/// or workshop owner would actually read their numbers.
+/// الرئيسية — نفس تخطيط المرجع: اختيار الفترة، 4 بطاقات أرقام الفترة
+/// (مبيعات/مشتريات/مصروفات/صافي الربح)، 4 بطاقات أرصدة (خزينة/بنك/عملاء/
+/// موردين)، ثم رسم بياني للمبيعات آخر 6 أشهر، وأخيرًا العمليات السريعة.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -22,33 +24,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
   late Future<DashboardData> _future;
 
+  /// بداية الفترة المختارة (null = الشهر الحالي).
+  DateTime? _periodStart;
+
+  static const _periods = <(String, int?)>[
+    ('هذا الشهر', null),
+    ('آخر 3 أشهر', 3),
+    ('آخر 6 أشهر', 6),
+    ('هذا العام', 12),
+  ];
+  String _periodLabel = 'هذا الشهر';
+
   @override
   void initState() {
     super.initState();
-    _future = _api.getDashboard(AppConfig.companyId).then(DashboardData.fromJson);
+    _load();
   }
 
-  void _reload() {
+  void _load() {
     setState(() {
-      _future = _api.getDashboard(AppConfig.companyId).then(DashboardData.fromJson);
+      _future = _api.getDashboard(AppConfig.companyId, periodStart: _periodStart).then(DashboardData.fromJson);
     });
+  }
+
+  void _reload() => _load();
+
+  Future<void> _pickPeriod() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (label, months) in _periods)
+              ListTile(
+                title: Text(label, textAlign: TextAlign.center),
+                trailing: label == _periodLabel ? const Icon(Icons.check, color: AppColors.primary) : null,
+                onTap: () => Navigator.of(ctx).pop(label),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == _periodLabel) return;
+    final found = _periods.firstWhere((p) => p.$1 == picked);
+    final months = found.$2;
+    setState(() {
+      _periodLabel = picked;
+      _periodStart = months == null ? null : _monthsAgo(months);
+    });
+    _load();
+  }
+
+  static DateTime _monthsAgo(int n) {
+    final now = DateTime.now();
+    var m = now.month - n + 1, y = now.year;
+    while (m <= 0) {
+      m += 12;
+      y -= 1;
+    }
+    return DateTime(y, m, 1);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('حساباتك'),
+      backgroundColor: AppColors.background,
+      appBar: AppHeader(
+        title: 'حساباتك',
         actions: [
           IconButton(
-            tooltip: 'النسخ الاحتياطي والاستعادة',
-            icon: const Icon(Icons.settings_backup_restore),
-            onPressed: () => showBackupSheet(context),
-          ),
-          IconButton(
-            tooltip: 'تسجيل الخروج',
-            icon: const Icon(Icons.logout),
-            onPressed: () => AppSession.instance.logout(),
+            tooltip: 'التنبيهات',
+            icon: const Icon(Icons.notifications_outlined, color: AppColors.navy),
+            onPressed: () {},
           ),
         ],
       ),
@@ -65,85 +114,161 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final data = snapshot.data!;
           return RefreshIndicator(
             onRefresh: () async => _reload(),
+            color: AppColors.primary,
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _BalanceCardsGrid(data: data),
-                const SizedBox(height: 24),
-                const Text('عمليات سريعة', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                _QuickActionsGrid(onDone: _reload),
+                // ===== اختيار الفترة =====
+                GestureDetector(
+                  onTap: _pickPeriod,
+                  child: SectionCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_month_outlined, size: 18, color: AppColors.primary),
+                            const SizedBox(width: 8),
+                            Text(_periodLabel,
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.navy)),
+                          ],
+                        ),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // ===== بطاقات الفترة =====
+                Row(
+                  children: [
+                    Expanded(
+                      child: StatCard(
+                        label: 'إجمالي المبيعات',
+                        value: AppFmt.num(data.periodSales),
+                        icon: Icons.payments_rounded,
+                        background: AppColors.greenTint,
+                        iconColor: AppColors.green,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: StatCard(
+                        label: 'إجمالي المشتريات',
+                        value: AppFmt.num(data.periodPurchases),
+                        icon: Icons.shopping_cart_rounded,
+                        background: AppColors.blueTint,
+                        iconColor: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: StatCard(
+                        label: 'إجمالي المصروفات',
+                        value: AppFmt.num(data.periodExpenses),
+                        icon: Icons.account_balance_wallet_rounded,
+                        background: AppColors.redTint,
+                        iconColor: AppColors.red,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: StatCard(
+                        label: 'صافي الربح',
+                        value: AppFmt.num(data.netProfit),
+                        icon: Icons.trending_up_rounded,
+                        background: AppColors.amberTint,
+                        iconColor: AppColors.amber,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // ===== الأرصدة =====
+                Row(
+                  children: [
+                    Expanded(
+                      child: StatCard(
+                        label: 'رصيد الخزينة',
+                        value: AppFmt.num(data.cashBalance),
+                        icon: Icons.savings_rounded,
+                        background: AppColors.purpleTint,
+                        iconColor: AppColors.purple,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: StatCard(
+                        label: 'رصيد البنك',
+                        value: AppFmt.num(data.bankBalance),
+                        icon: Icons.account_balance_rounded,
+                        background: AppColors.blueTint,
+                        iconColor: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: StatCard(
+                        label: 'أرصدة العملاء (لنا)',
+                        value: AppFmt.num(data.receivableFromCustomers),
+                        icon: Icons.groups_rounded,
+                        background: AppColors.tealTint,
+                        iconColor: AppColors.teal,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: StatCard(
+                        label: 'أرصدة الموردين (علينا)',
+                        value: AppFmt.num(data.payableToSuppliers),
+                        icon: Icons.storefront_rounded,
+                        background: AppColors.amberTint,
+                        iconColor: AppColors.amber,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // ===== رسم المبيعات =====
+                SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionHeader('المبيعات خلال الأشهر الماضية'),
+                      SalesBarChart(data: data.salesSeries),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // ===== عمليات سريعة =====
+                SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionHeader('عمليات سريعة'),
+                      _QuickActionsGrid(onDone: _reload),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
               ],
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _BalanceCardsGrid extends StatelessWidget {
-  const _BalanceCardsGrid({required this.data});
-  final DashboardData data;
-
-  @override
-  Widget build(BuildContext context) {
-    final fmt = NumberFormat.decimalPattern('ar_EG');
-    String money(double v) => '${fmt.format(v)} ${data.currencyLabel}';
-
-    final cards = [
-      _CardSpec('رصيد الخزينة', money(data.cashBalance), Icons.payments_outlined, Colors.teal),
-      _CardSpec('رصيد البنك', money(data.bankBalance), Icons.account_balance_outlined, Colors.indigo),
-      _CardSpec('لدى العملاء', money(data.receivableFromCustomers), Icons.people_outline, Colors.orange),
-      _CardSpec('للموردين', money(data.payableToSuppliers), Icons.local_shipping_outlined, Colors.deepOrange),
-      _CardSpec('مبيعات الشهر', money(data.monthSales), Icons.trending_up, Colors.green),
-      _CardSpec('المصروفات', money(data.monthExpenses), Icons.trending_down, Colors.redAccent),
-      _CardSpec('صافي الربح', money(data.netProfit), Icons.savings_outlined,
-          data.netProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700),
-    ];
-
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 1.5,
-      children: cards.map((c) => _BalanceCard(spec: c)).toList(),
-    );
-  }
-}
-
-class _CardSpec {
-  _CardSpec(this.label, this.value, this.icon, this.color);
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-}
-
-class _BalanceCard extends StatelessWidget {
-  const _BalanceCard({required this.spec});
-  final _CardSpec spec;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: spec.color.withOpacity(0.08),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Icon(spec.icon, color: spec.color),
-            Text(spec.label, style: const TextStyle(fontSize: 13, color: Colors.black54)),
-            Text(spec.value,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: spec.color)),
-          ],
-        ),
       ),
     );
   }
@@ -172,6 +297,7 @@ class _QuickActionsGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 8,
       mainAxisSpacing: 12,
+      childAspectRatio: 0.85,
       children: _actions.map((a) {
         final (label, icon) = a;
         return InkWell(
@@ -180,9 +306,17 @@ class _QuickActionsGrid extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(radius: 22, child: Icon(icon)),
+              IconTile(
+                icon: icon,
+                background: AppColors.blueTint,
+                color: AppColors.primary,
+                size: 44,
+              ),
               const SizedBox(height: 6),
-              Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11)),
+              Text(label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  style: const TextStyle(fontSize: 10.5, color: AppColors.navy)),
             ],
           ),
         );
@@ -201,7 +335,9 @@ class _ErrorState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('تعذر تحميل البيانات. تأكد من الاتصال وحاول مرة أخرى.'),
+          const Text('تعذر تحميل البيانات. تأكد من الاتصال وحاول مرة أخرى.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 12),
           FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
         ],
@@ -211,7 +347,7 @@ class _ErrorState extends StatelessWidget {
 }
 
 // ======================================================================
-// Phase 6: backup & restore (spec §59/§60)
+// Phase 6: backup & restore (spec §59/§60) — now reachable from الإعدادات
 // ======================================================================
 
 /// Bottom sheet with: download a full backup (JSON, shareable anywhere),
@@ -230,10 +366,10 @@ Future<void> showBackupSheet(BuildContext context) async {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text('النسخ الاحتياطي والاستعادة',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
             const SizedBox(height: 8),
             const Text('خذ نسخة كاملة من بيانات مشروعك، أو استعد نسخة سابقة. الاستعادة تستبدل كل البيانات الحالية.',
-                style: TextStyle(color: Colors.black54, fontSize: 13)),
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
             const SizedBox(height: 16),
             FilledButton.icon(
               icon: const Icon(Icons.download_outlined),
@@ -281,11 +417,13 @@ Future<void> _restoreFromPicker(BuildContext context, ApiClient api) async {
   if (!context.mounted) return;
 
   // Replace mode is destructive — require an explicit typed confirmation.
+  String restoreText = '';
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) {
-      final controller = TextEditingController();
-      return AlertDialog(
+    builder: (dialogContext) => Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('تأكيد الاستعادة'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -294,24 +432,23 @@ Future<void> _restoreFromPicker(BuildContext context, ApiClient api) async {
             const Text('سيتم استبدال كل بيانات المشروع الحالية ببيانات النسخة الاحتياطية. لا يمكن التراجع عن هذه الخطوة.'),
             const SizedBox(height: 12),
             TextField(
-              controller: controller,
               keyboardType: TextInputType.text,
               decoration: const InputDecoration(
                 labelText: 'اكتب «استعادة» للتأكيد',
-                border: OutlineInputBorder(),
               ),
+              onChanged: (v) => restoreText = v,
             ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim() == 'استعادة'),
+            onPressed: () => Navigator.of(dialogContext).pop(restoreText.trim() == 'استعادة'),
             child: const Text('استعادة'),
           ),
         ],
-      );
-    },
+      ),
+    ),
   );
   if (confirmed != true || !context.mounted) return;
 

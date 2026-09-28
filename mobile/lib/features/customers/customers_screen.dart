@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:characters/characters.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
+import '../../ui/theme.dart';
+import '../../ui/widgets.dart';
+import '../home/home_shell.dart';
 import 'customer_model.dart';
 import 'customer_statement_screen.dart';
 
+/// العملاء — كالمرجع: زر «+ إضافة عميل» أزرق بعرض الشاشة، ثم حقل البحث،
+/// ثم قائمة العملاء (أيقونة شخص زرقاء + الاسم + الهاتف + الرصيد + سهم).
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
 
@@ -15,6 +20,7 @@ class CustomersScreen extends StatefulWidget {
 class _CustomersScreenState extends State<CustomersScreen> {
   final _api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
   late Future<List<CustomerSummary>> _future;
+  late Future<Map<int, double>> _balances;
   String _query = '';
 
   @override
@@ -28,6 +34,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       _future = _api
           .getCustomers(AppConfig.companyId)
           .then((list) => list.map((e) => CustomerSummary.fromJson(e as Map<String, dynamic>)).toList());
+      _balances = _api.getCustomerBalances(AppConfig.companyId);
     });
   }
 
@@ -44,29 +51,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('العملاء'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: TextField(
-              onChanged: (v) => setState(() => _query = v),
-              decoration: InputDecoration(
-                hintText: 'بحث عن عميل...',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              ),
-            ),
-          ),
+      backgroundColor: AppColors.background,
+      appBar: AppHeader(title: 'العملاء', actions: [
+        IconButton(
+          tooltip: 'بحث',
+          icon: const Icon(Icons.search, color: AppColors.navy),
+          onPressed: () {},
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddCustomerSheet,
-        icon: const Icon(Icons.person_add_alt),
-        label: const Text('عميل جديد'),
-      ),
+      ]),
       body: FutureBuilder<List<CustomerSummary>>(
         future: _future,
         builder: (context, snapshot) {
@@ -78,43 +70,88 @@ class _CustomersScreenState extends State<CustomersScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('تعذر تحميل قائمة العملاء.'),
+                  const Text('تعذر تحميل قائمة العملاء.',
+                      style: TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 8),
                   FilledButton(onPressed: _load, child: const Text('إعادة المحاولة')),
                 ],
               ),
             );
           }
-          final customers = snapshot.data!
-              .where((c) => _query.isEmpty || c.name.contains(_query))
-              .toList();
-
-          if (customers.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('لا يوجد عملاء بعد. اضغط "عميل جديد" لإضافة أول عميل.', textAlign: TextAlign.center),
+          final all = snapshot.data!;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _openAddCustomerSheet,
+                      icon: const Icon(Icons.person_add_alt, size: 20),
+                      label: const Text('إضافة عميل'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      onChanged: (v) => setState(() => _query = v),
+                      decoration: InputDecoration(
+                        hintText: 'البحث عن عميل...',
+                        prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: () async => _load(),
-            child: ListView.separated(
-              itemCount: customers.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, i) {
-                final c = customers[i];
-                return ListTile(
-                  leading: CircleAvatar(child: Text(c.name.characters.first)),
-                  title: Text(c.name),
-                  subtitle: c.phone != null ? Text(c.phone!) : null,
-                  trailing: const Icon(Icons.chevron_left),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => CustomerStatementScreen(customerId: c.id, customerName: c.name)),
-                  ),
-                );
-              },
-            ),
+              Expanded(
+                child: FutureBuilder<Map<int, double>>(
+                  future: _balances,
+                  builder: (context, balSnap) {
+                    final balances = balSnap.data ?? const <int, double>{};
+                    final customers =
+                        all.where((c) => _query.isEmpty || c.name.contains(_query)).toList();
+                    if (customers.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'لا يوجد عملاء بعد. اضغط «إضافة عميل» لإضافة أول عميل.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ),
+                      );
+                    }
+                    return RefreshIndicator(
+                      onRefresh: () async => _load(),
+                      color: AppColors.primary,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: customers.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, i) {
+                          final c = customers[i];
+                          final balance = balances[c.id] ?? 0.0;
+                          return SectionCard(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            child: AppListTile(
+                              icon: Icons.person_rounded,
+                              title: c.name,
+                              subtitle: c.phone != null && c.phone!.isNotEmpty ? c.phone! : '—',
+                              trailingLabel: AppFmt.money(balance),
+                              trailingColor: balance > 0 ? AppColors.red : AppColors.green,
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => CustomerStatementScreen(
+                                      customerId: c.id, customerName: c.name))),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -139,7 +176,8 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('من فضلك أدخل اسم العميل')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('من فضلك أدخل اسم العميل')));
       return;
     }
     setState(() => _saving = true);
@@ -165,19 +203,21 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+      padding: EdgeInsets.only(
+          left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('عميل جديد', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text('عميل جديد',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
           const SizedBox(height: 16),
-          TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'اسم العميل', border: OutlineInputBorder())),
+          TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'اسم العميل')),
           const SizedBox(height: 12),
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'رقم الهاتف (اختياري)', border: OutlineInputBorder()),
+            decoration: const InputDecoration(labelText: 'رقم الهاتف (اختياري)'),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -187,14 +227,13 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
               labelText: 'رصيد افتتاحي (إن وُجد)',
               helperText: 'المبلغ الذي كان عليه قبل استخدام التطبيق',
               suffixText: 'ج.م',
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: _saving ? null : _save,
             child: _saving
-                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('حفظ'),
           ),
         ],

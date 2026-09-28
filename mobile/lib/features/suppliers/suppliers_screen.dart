@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:characters/characters.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
+import '../../ui/theme.dart';
+import '../../ui/widgets.dart';
+import '../home/home_shell.dart';
 import 'supplier_model.dart';
 import 'supplier_statement_screen.dart';
 
+/// الموردون — نفس تصميم شاشة العملاء تمامًا (نظام موحد): زر إضافة أزرق،
+/// بحث، ثم بطاقات (أيقونة + الاسم + الهاتف + الرصيد المستحق له).
 class SuppliersScreen extends StatefulWidget {
   const SuppliersScreen({super.key});
 
@@ -15,6 +19,7 @@ class SuppliersScreen extends StatefulWidget {
 class _SuppliersScreenState extends State<SuppliersScreen> {
   final _api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
   late Future<List<SupplierSummary>> _future;
+  late Future<Map<int, double>> _balances;
   String _query = '';
 
   @override
@@ -28,6 +33,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
       _future = _api
           .getSuppliers(AppConfig.companyId)
           .then((list) => list.map((e) => SupplierSummary.fromJson(e as Map<String, dynamic>)).toList());
+      _balances = _api.getSupplierBalances(AppConfig.companyId);
     });
   }
 
@@ -44,29 +50,14 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('الموردون'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: TextField(
-              onChanged: (v) => setState(() => _query = v),
-              decoration: InputDecoration(
-                hintText: 'بحث عن مورد...',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              ),
-            ),
-          ),
+      backgroundColor: AppColors.background,
+      appBar: AppHeader(title: 'الموردون', actions: [
+        IconButton(
+          tooltip: 'بحث',
+          icon: const Icon(Icons.search, color: AppColors.navy),
+          onPressed: () {},
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddSupplierSheet,
-        icon: const Icon(Icons.local_shipping_outlined),
-        label: const Text('مورد جديد'),
-      ),
+      ]),
       body: FutureBuilder<List<SupplierSummary>>(
         future: _future,
         builder: (context, snapshot) {
@@ -78,41 +69,88 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('تعذر تحميل قائمة الموردين.'),
+                  const Text('تعذر تحميل قائمة الموردين.',
+                      style: TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 8),
                   FilledButton(onPressed: _load, child: const Text('إعادة المحاولة')),
                 ],
               ),
             );
           }
-          final suppliers = snapshot.data!.where((s) => _query.isEmpty || s.name.contains(_query)).toList();
-
-          if (suppliers.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('لا يوجد موردون بعد. اضغط "مورد جديد" لإضافة أول مورد.', textAlign: TextAlign.center),
+          final all = snapshot.data!;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _openAddSupplierSheet,
+                      icon: const Icon(Icons.add_business, size: 20),
+                      label: const Text('إضافة مورد'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      onChanged: (v) => setState(() => _query = v),
+                      decoration: InputDecoration(
+                        hintText: 'البحث عن مورد...',
+                        prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: () async => _load(),
-            child: ListView.separated(
-              itemCount: suppliers.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, i) {
-                final s = suppliers[i];
-                return ListTile(
-                  leading: CircleAvatar(child: Text(s.name.characters.first)),
-                  title: Text(s.name),
-                  subtitle: s.phone != null ? Text(s.phone!) : null,
-                  trailing: const Icon(Icons.chevron_left),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => SupplierStatementScreen(supplierId: s.id, supplierName: s.name)),
-                  ),
-                );
-              },
-            ),
+              Expanded(
+                child: FutureBuilder<Map<int, double>>(
+                  future: _balances,
+                  builder: (context, balSnap) {
+                    final balances = balSnap.data ?? const <int, double>{};
+                    final suppliers =
+                        all.where((s) => _query.isEmpty || s.name.contains(_query)).toList();
+                    if (suppliers.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'لا يوجد موردون بعد. اضغط «إضافة مورد» لإضافة أول مورد.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ),
+                      );
+                    }
+                    return RefreshIndicator(
+                      onRefresh: () async => _load(),
+                      color: AppColors.primary,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: suppliers.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, i) {
+                          final s = suppliers[i];
+                          final balance = balances[s.id] ?? 0.0;
+                          return SectionCard(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            child: AppListTile(
+                              icon: Icons.storefront_rounded,
+                              title: s.name,
+                              subtitle: s.phone != null && s.phone!.isNotEmpty ? s.phone! : '—',
+                              trailingLabel: AppFmt.money(balance),
+                              trailingColor: balance > 0 ? AppColors.red : AppColors.green,
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => SupplierStatementScreen(
+                                      supplierId: s.id, supplierName: s.name))),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -137,7 +175,8 @@ class _AddSupplierSheetState extends State<_AddSupplierSheet> {
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('من فضلك أدخل اسم المورد')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('من فضلك أدخل اسم المورد')));
       return;
     }
     setState(() => _saving = true);
@@ -163,19 +202,21 @@ class _AddSupplierSheetState extends State<_AddSupplierSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+      padding: EdgeInsets.only(
+          left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('مورد جديد', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text('مورد جديد',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
           const SizedBox(height: 16),
-          TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'اسم المورد', border: OutlineInputBorder())),
+          TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'اسم المورد')),
           const SizedBox(height: 12),
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'رقم الهاتف (اختياري)', border: OutlineInputBorder()),
+            decoration: const InputDecoration(labelText: 'رقم الهاتف (اختياري)'),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -185,14 +226,13 @@ class _AddSupplierSheetState extends State<_AddSupplierSheet> {
               labelText: 'رصيد افتتاحي (إن وُجد)',
               helperText: 'المبلغ الذي كان مستحقًا له قبل استخدام التطبيق',
               suffixText: 'ج.م',
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: _saving ? null : _save,
             child: _saving
-                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('حفظ'),
           ),
         ],

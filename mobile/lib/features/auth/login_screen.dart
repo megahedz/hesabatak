@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/session.dart';
+import '../../ui/theme.dart';
+import '../../ui/widgets.dart';
 
-/// First screen when there's no active session. Handles both login and
-/// first-time registration (spec doesn't separate these into different
-/// screens — a shop owner installing the app for the first time should
-/// just get straight to "تسجيل الدخول / حساب جديد" without extra steps).
+/// شاشة الدخول — نفس لغة التصميم المرجعي: خلفية فاتحة بلمسات زرقاء ناعمة،
+/// شعار حساباتك في الأعلى، ثم بطاقة بيضاء بها الحقول وزر أزرق «تسجيل الدخول».
+/// تتعامل مع الدخول وإنشاء الحساب الأول معًا (spec §56/§57).
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -20,7 +21,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isRegisterMode = false;
+  bool _rememberMe = true;
   bool _loading = false;
+  bool _obscure = true;
   String? _error;
   bool _isNetworkError = false;
 
@@ -106,24 +109,28 @@ class _LoginScreenState extends State<LoginScreen> {
     return showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('أهلاً بك في حساباتك'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('تابع شغلك واعرف مكسبك بسهولة. ابدأ بإدخال اسم مشروعك:'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'اسم المشروع أو المحل', border: OutlineInputBorder()),
-            ),
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('أهلاً بك في حساباتك'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('تابع شغلك واعرف مكسبك بسهولة. ابدأ بإدخال اسم مشروعك:'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'اسم المشروع أو المحل'),
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('ابدأ الآن')),
           ],
         ),
-        actions: [
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('ابدأ الآن')),
-        ],
       ),
     );
   }
@@ -131,64 +138,128 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Icon(Icons.account_balance_wallet_outlined, size: 56, color: Color(0xFF0F6E5C)),
-                const SizedBox(height: 12),
-                const Text('حساباتك', textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-                const Text('حسابات مشروعك ببساطة', textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.black54)),
-                const SizedBox(height: 32),
-                if (_isRegisterMode) ...[
-                  TextField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(labelText: 'الاسم', border: OutlineInputBorder()),
-                  ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFEDF4FC), AppColors.background],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const HesabatakLogo(size: 96),
                   const SizedBox(height: 12),
-                ],
-                TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'رقم الهاتف', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder()),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  SelectableText(_error!, style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(_isRegisterMode ? 'إنشاء حساب' : 'تسجيل الدخول'),
-                ),
-                if (_isNetworkError && !_loading) ...[
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _submit,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('إعادة المحاولة'),
+                  const Text('حساباتك',
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                  const SizedBox(height: 4),
+                  const Text('إدارة أعمالك بسهولة',
+                      style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                  const SizedBox(height: 28),
+                  SectionCard(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_isRegisterMode) ...[
+                          TextField(
+                            controller: _nameController,
+                            decoration: const InputDecoration(
+                              labelText: 'الاسم',
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                        TextField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'اسم المستخدم (رقم الهاتف)',
+                            prefixIcon: Icon(Icons.person_outline),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: _obscure,
+                          decoration: InputDecoration(
+                            labelText: 'كلمة المرور',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                              onPressed: () => setState(() => _obscure = !_obscure),
+                            ),
+                          ),
+                        ),
+                        if (_error != null) ...[
+                          const SizedBox(height: 12),
+                          SelectableText(_error!,
+                              style: const TextStyle(color: AppColors.red, fontSize: 13),
+                              textAlign: TextAlign.center),
+                        ],
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: Checkbox(
+                                    value: _rememberMe,
+                                    activeColor: AppColors.primary,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                    onChanged: (v) => setState(() => _rememberMe = v ?? true),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Text('تذكّني', style: TextStyle(fontSize: 13.5, color: AppColors.navy)),
+                              ],
+                            ),
+                            TextButton(
+                              onPressed: () => setState(() => _isRegisterMode = !_isRegisterMode),
+                              child: Text(
+                                _isRegisterMode ? 'لديك حساب؟ سجّل الدخول' : 'نسيت كلمة المرور؟',
+                                style: const TextStyle(fontSize: 13, color: AppColors.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        FilledButton(
+                          onPressed: _loading ? null : _submit,
+                          child: _loading
+                              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Text(_isRegisterMode ? 'إنشاء حساب' : 'تسجيل الدخول'),
+                        ),
+                        if (_isNetworkError && !_loading) ...[
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _submit,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('إعادة المحاولة'),
+                          ),
+                        ],
+                        if (!_isRegisterMode) ...[
+                          const SizedBox(height: 4),
+                          TextButton(
+                            onPressed: _loading ? null : () => setState(() => _isRegisterMode = true),
+                            child: const Text('حساب جديد؟ أنشئ حسابًا',
+                                style: TextStyle(color: AppColors.textSecondary)),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ],
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: _loading ? null : () => setState(() => _isRegisterMode = !_isRegisterMode),
-                  child: Text(_isRegisterMode ? 'لديك حساب بالفعل؟ سجّل الدخول' : 'حساب جديد؟ أنشئ حسابًا'),
-                ),
-              ],
+              ),
             ),
           ),
         ),

@@ -5,6 +5,7 @@ import 'core/session.dart';
 import 'core/sync_manager.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_shell.dart';
+import 'ui/theme.dart';
 
 Future<void> main() async {
   // Must run before runApp: restoring the session is async, and the first
@@ -39,15 +40,7 @@ class HesabatakApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Cairo', // Arabic-friendly font; bundle it in Phase 2 (see README)
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F6E5C), // calm teal-green — reads "money/trust" without looking like a bank app
-          brightness: Brightness.light,
-        ),
-        appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-      ),
+      theme: AppTheme.light,
       home: const Directionality(
         textDirection: TextDirection.rtl,
         child: _AuthGate(),

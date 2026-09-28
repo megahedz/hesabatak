@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
+import '../../ui/theme.dart';
+import '../../ui/widgets.dart';
 import 'customer_model.dart';
 
 /// كشف حساب العميل (spec §23): رصيد افتتاحي، كل فاتورة ودفعة بالترتيب، رصيد ختامي.
@@ -28,9 +29,9 @@ class _CustomerStatementScreenState extends State<CustomerStatementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final fmt = NumberFormat.decimalPattern('ar_EG');
     return Scaffold(
-      appBar: AppBar(title: Text('كشف حساب: ${widget.customerName}')),
+      backgroundColor: AppColors.background,
+      appBar: AppHeader(title: 'كشف حساب: ${widget.customerName}'),
       body: FutureBuilder<Statement>(
         future: _future,
         builder: (context, snapshot) {
@@ -43,51 +44,79 @@ class _CustomerStatementScreenState extends State<CustomerStatementScreen> {
           final s = snapshot.data!;
           return Column(
             children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _SummaryTile(label: 'الرصيد الافتتاحي', value: '${fmt.format(s.openingBalance)} ج.م'),
-                    _SummaryTile(
-                      label: 'الرصيد الحالي',
-                      value: '${fmt.format(s.closingBalance)} ج.م',
-                      emphasize: true,
-                    ),
-                  ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: SectionCard(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _SummaryTile(label: 'الرصيد الافتتاحي', value: AppFmt.money(s.openingBalance)),
+                      _SummaryTile(
+                        label: 'الرصيد الحالي',
+                        value: AppFmt.money(s.closingBalance),
+                        emphasize: true,
+                        valueColor: s.closingBalance > 0 ? AppColors.red : AppColors.green,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Expanded(
                 child: s.lines.isEmpty
                     ? const Center(child: Text('لا توجد حركات بعد على هذا العميل'))
-                    : ListView.separated(
-                        itemCount: s.lines.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, i) {
-                          final line = s.lines[i];
-                          final isDebit = line.debit > 0;
-                          return ListTile(
-                            title: Text(line.description),
-                            subtitle: Text(line.date),
-                            trailing: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisSize: MainAxisSize.min,
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        children: [
+                          SectionCard(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: Column(
                               children: [
-                                Text(
-                                  isDebit ? '+${fmt.format(line.debit)}' : '-${fmt.format(line.credit)}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: isDebit ? Colors.orange.shade800 : Colors.green.shade700,
+                                for (final line in s.lines)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 6),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(line.description,
+                                                  style: const TextStyle(
+                                                      fontSize: 13.5,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: AppColors.navy)),
+                                              Text(line.date,
+                                                  style: const TextStyle(
+                                                      fontSize: 11.5, color: AppColors.textSecondary)),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                              line.debit > 0
+                                                  ? '+${AppFmt.num(line.debit)}'
+                                                  : '-${AppFmt.num(line.credit)}',
+                                              style: TextStyle(
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w800,
+                                                color: line.debit > 0 ? AppColors.amber : AppColors.green,
+                                              ),
+                                            ),
+                                            Text('الرصيد: ${AppFmt.num(line.runningBalance)}',
+                                                style: const TextStyle(
+                                                    fontSize: 11, color: AppColors.textSecondary)),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                Text('الرصيد: ${fmt.format(line.runningBalance)}',
-                                    style: const TextStyle(fontSize: 11, color: Colors.black54)),
                               ],
                             ),
-                          );
-                        },
+                          ),
+                        ],
                       ),
               ),
             ],
@@ -99,18 +128,23 @@ class _CustomerStatementScreenState extends State<CustomerStatementScreen> {
 }
 
 class _SummaryTile extends StatelessWidget {
-  const _SummaryTile({required this.label, required this.value, this.emphasize = false});
+  const _SummaryTile({required this.label, required this.value, this.emphasize = false, this.valueColor});
   final String label;
   final String value;
   final bool emphasize;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
         const SizedBox(height: 4),
-        Text(value, style: TextStyle(fontSize: emphasize ? 20 : 16, fontWeight: FontWeight.bold)),
+        Text(value,
+            style: TextStyle(
+                fontSize: emphasize ? 18 : 15,
+                fontWeight: FontWeight.w800,
+                color: valueColor ?? AppColors.navy)),
       ],
     );
   }

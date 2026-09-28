@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body
+from sqlalchemy import func
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,7 @@ from app.accounting.reports import (
     general_ledger, cash_flow, vat_report,
 )
 from app.accounting.detailed_reports import sales_report, purchases_report, inventory_report, expense_report
+from app.accounting.dashboard_stats import monthly_sales_series, period_purchases
 from app.accounting.exports import (
     build_pdf, build_xlsx, EXPORTS, ExportError,
 )
@@ -234,19 +236,22 @@ def create_product(company_id: int, name: str, sku: Optional[str] = None,
 
 
 @scoped.get("/dashboard")
-def dashboard(company_id: int, db: Session = Depends(get_db)):
+def dashboard(company_id: int, start: Optional[date] = None, db: Session = Depends(get_db)):
+    """Dashboard cards for the period starting at `start` (default: this month)."""
     today = date.today()
-    month_start = today.replace(day=1)
+    month_start = start or today.replace(day=1)
     cash = party_ledger_balance(db, company_id, SystemAccountCode.CASH.value)
     bank = party_ledger_balance(db, company_id, SystemAccountCode.BANK.value)
     receivable = party_ledger_balance(db, company_id, SystemAccountCode.ACCOUNTS_RECEIVABLE.value)
     payable = party_ledger_balance(db, company_id, SystemAccountCode.ACCOUNTS_PAYABLE.value)
-    pl_month = profit_and_loss(db, company_id, start=month_start, end=today)
+    pl_period = profit_and_loss(db, company_id, start=month_start, end=today)
     return {
         "رصيد_الخزينة": str(cash), "رصيد_البنك": str(bank),
         "لدى_العملاء": str(receivable), "للموردين": str(payable),
-        "مبيعات_الشهر": str(pl_month["revenue"]), "المصروفات": str(pl_month["operating_expenses"]),
-        "صافي_الربح": str(pl_month["net_profit"]), "العملة": "ج.م",
+        "مبيعات_الفترة": str(pl_period["revenue"]), "المشتريات": str(period_purchases(db, company_id, month_start)),
+        "المصروفات": str(pl_period["operating_expenses"]), "صافي_الربح": str(pl_period["net_profit"]),
+        "العملة": "ج.م",
+        "مبيعات_آخر_6أشهر": monthly_sales_series(db, company_id, months=6),
     }
 
 
@@ -264,6 +269,63 @@ def create_customer(company_id: int, name: str, phone: Optional[str] = None,
 def list_customers(company_id: int, db: Session = Depends(get_db)):
     customers = db.query(Customer).filter(Customer.company_id == company_id).all()
     return [{"id": c.id, "name": c.name, "phone": c.phone} for c in customers]
+
+
+@scoped.get("/customers/balances")
+def customer_balances(company_id: int, db: Session = Depends(get_db)):
+    """Ledger balance per customer (AR lines linked to each customer) — what
+    the customers screen shows against every name. Unpaid opening balances
+    count too (the AR account itself starts from them)."""
+    from app.models.journal import JournalEntryLine, JournalEntry
+    from app.models.accounts import Account
+    from app.models.parties import Customer as CustomerModel
+    rows = (
+        db.query(
+            JournalEntryLine.customer_id,
+            func.coalesce(func.sum(JournalEntryLine.debit) - func.sum(JournalEntryLine.credit), 0),
+        )
+        .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
+        .join(Account, Account.id == JournalEntryLine.account_id)
+        .filter(
+            JournalEntry.company_id == company_id,
+            JournalEntryLine.customer_id.isnot(None),
+            Account.code == SystemAccountCode.ACCOUNTS_RECEIVABLE.value,
+        )
+        .group_by(JournalEntryLine.customer_id)
+        .all()
+    )
+    balances = {cid: Decimal(str(net)) for cid, net in rows}
+    for c in db.query(CustomerModel).filter(CustomerModel.company_id == company_id).all():
+        balances.setdefault(c.id, Decimal("0"))
+    return {str(cid): float(v) for cid, v in sorted(balances.items())}
+
+
+@scoped.get("/suppliers/balances")
+def supplier_balances(company_id: int, db: Session = Depends(get_db)):
+    """Ledger balance per supplier (credit minus debit on AP lines) — positive
+    means we still owe them."""
+    from app.models.journal import JournalEntryLine, JournalEntry
+    from app.models.accounts import Account
+    from app.models.parties import Supplier as SupplierModel
+    rows = (
+        db.query(
+            JournalEntryLine.supplier_id,
+            func.coalesce(func.sum(JournalEntryLine.credit) - func.sum(JournalEntryLine.debit), 0),
+        )
+        .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
+        .join(Account, Account.id == JournalEntryLine.account_id)
+        .filter(
+            JournalEntry.company_id == company_id,
+            JournalEntryLine.supplier_id.isnot(None),
+            Account.code == SystemAccountCode.ACCOUNTS_PAYABLE.value,
+        )
+        .group_by(JournalEntryLine.supplier_id)
+        .all()
+    )
+    balances = {sid: Decimal(str(net)) for sid, net in rows}
+    for s in db.query(SupplierModel).filter(SupplierModel.company_id == company_id).all():
+        balances.setdefault(s.id, Decimal("0"))
+    return {str(sid): float(v) for sid, v in sorted(balances.items())}
 
 
 @scoped.get("/customers/{customer_id}/statement")
@@ -311,13 +373,19 @@ def get_supplier_statement(company_id: int, supplier_id: int, db: Session = Depe
 def op_sale(company_id: int, amount: Decimal, is_credit: bool = False, method: str = "cash",
             customer_id: Optional[int] = None, vat_amount: Decimal = Decimal("0"),
             product_id: Optional[int] = None, quantity: Decimal = Decimal("0"),
-            unit_price: Optional[Decimal] = None, db: Session = Depends(get_db)):
+            unit_price: Optional[Decimal] = None,
+            items_json: Optional[str] = None, db: Session = Depends(get_db)):
     """One sale. When product_id+quantity are given, the invoice records the
     line, stock is consumed at weighted-average cost, and the computed COGS is
-    posted automatically — the caller never sends COGS (spec §9: engine only)."""
+    posted automatically — the caller never sends COGS (spec §9: engine only).
+    Multi-line clients (the redesigned invoice screen) send `items_json`:
+    [{"product_id", "quantity", "unit_price"}] — `amount` must equal the
+    items' line_total sum, which the UI computes and shows."""
     try:
         items = None
-        if product_id is not None:
+        if items_json:
+            items = _parse_items_json(items_json)
+        elif product_id is not None:
             if quantity <= 0:
                 raise AccountingError("كمية البيع يجب أن تكون أكبر من صفر.")
             item = {"product_id": product_id, "quantity": quantity}
@@ -333,17 +401,47 @@ def op_sale(company_id: int, amount: Decimal, is_credit: bool = False, method: s
         _friendly_error(e, db)
 
 
+def _parse_items_json(raw: str) -> list[dict]:
+    """Parse the mobile client's items payload. Values arrive as strings via
+    query params; numbers are coerced so record_sale can validate them."""
+    import json
+    try:
+        rows = json.loads(raw)
+        assert isinstance(rows, list) and rows
+    except Exception:
+        raise AccountingError("بنود الفاتورة غير صالحة.")
+    parsed = []
+    for r in rows:
+        try:
+            parsed.append({
+                "product_id": int(r["product_id"]),
+                "quantity": Decimal(str(r["quantity"])),
+                "unit_price": Decimal(str(r["unit_price"])),
+            })
+        except Exception:
+            raise AccountingError("بنود الفاتورة غير صالحة.")
+    return parsed
+
+
 @scoped.post("/operations/purchase")
 def op_purchase(company_id: int, amount: Decimal, is_credit: bool = False, method: str = "cash",
                  supplier_id: Optional[int] = None, goes_to_inventory: bool = False,
                  vat_amount: Decimal = Decimal("0"),
                  product_id: Optional[int] = None, quantity: Decimal = Decimal("0"),
+                 items_json: Optional[str] = None,
                  db: Session = Depends(get_db)):
     """One purchase. With product_id+quantity, stock is received at
-    amount/quantity as unit cost and the weighted average is re-computed."""
+    amount/quantity as unit cost and the weighted average is re-computed.
+    Multi-line clients (the redesigned invoice screen) send `items_json` —
+    same shape as the sale endpoint; items force the purchase into inventory
+    and must sum to `amount` (per-line discounts are already baked into the
+    unit prices the client sends)."""
     try:
         items = None
-        if product_id is not None:
+        if items_json:
+            goes_to_inventory = True  # named products physically arrive
+            items = _parse_items_json(items_json)
+        elif product_id is not None:
             if quantity <= 0:
                 raise AccountingError("كمية الشراء يجب أن تكون أكبر من صفر.")
             goes_to_inventory = True  # a named product physically arrives → inventory
