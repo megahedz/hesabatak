@@ -1,8 +1,7 @@
 name: Build حساباتك APK
 
-# Trigger this manually from the "Actions" tab on GitHub (workflow_dispatch),
-# or automatically on every push to main. Either way, no Flutter/Android
-# Studio install is needed on your own machine — GitHub's servers do it.
+# Trigger manually from the "Actions" tab (workflow_dispatch), or
+# automatically on every push to main. No local Flutter install needed.
 on:
   workflow_dispatch:
     inputs:
@@ -28,34 +27,50 @@ jobs:
         working-directory: mobile
         run: flutter create --platforms=android --org com.hesabatak .
 
-      # flutter create (Flutter 3.24.0) stamps Kotlin Gradle plugin 1.7.10 into
-      # android/settings.gradle, but flutter_secure_storage pulls in
-      # kotlin-stdlib 1.9.24 whose 1.9.0 metadata the 1.7.10 compiler cannot
-      # read -> ":app:compileReleaseKotlin" fails with "Module was compiled
-      # with an incompatible version of Kotlin". Bump the plugin so the
-      # compiler can read the stdlib's metadata.
-      - name: Bump Kotlin Gradle plugin to 1.9.24
-        working-directory: mobile
-        run: |
-          sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle
-          grep 'org.jetbrains.kotlin.android' android/settings.gradle
-
       - name: Install dependencies
         working-directory: mobile
         run: flutter pub get
 
-      - name: Generate app icon from assets/icon/icon.png
+      - name: Generate app icon (if configured in pubspec.yaml)
         working-directory: mobile
-        run: dart run flutter_launcher_icons
-
-      - name: Set app display name to حساباتك
-        working-directory: mobile
-        # flutter create (above) regenerates AndroidManifest.xml fresh every
-        # run with a generic label, so the display name has to be patched
-        # back in after create but before build, every single time.
         run: |
-          sed -i 's/android:label="[^"]*"/android:label="حساباتك"/' android/app/src/main/AndroidManifest.xml
-          grep android:label android/app/src/main/AndroidManifest.xml
+          if grep -q flutter_launcher_icons pubspec.yaml && [ -f assets/icon/icon.png ]; then
+            dart run flutter_launcher_icons
+          else
+            echo "Icon not configured, skipping"
+          fi
+
+      - name: Patch AndroidManifest (app name + internet permission)
+        working-directory: mobile
+        # flutter create regenerates the manifest fresh every run, so these
+        # patches must be re-applied every run, after create and before build.
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="[^"]*"/android:label="حساباتك"/' $M
+          grep -q 'android.permission.INTERNET' $M || sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET" />' $M
+          echo "--- manifest check ---"
+          grep -n 'android:label\|permission.INTERNET' $M
+
+      - name: Raise compileSdk to 35 (required by newer plugins)
+        working-directory: mobile
+        run: |
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' android/app/build.gradle
+          grep -n compileSdk android/app/build.gradle
+
+      - name: Patch share_plus calls for the older API in this Flutter version
+        working-directory: mobile
+        run: |
+          F=lib/features/reports/export_service.dart
+          if [ -f "$F" ]; then
+            python3 - <<'EOF'
+          import re
+          p = "lib/features/reports/export_service.dart"
+          s = open(p, encoding="utf-8").read()
+          s = re.sub(r"SharePlus\.instance\.share\(\s*ShareParams\(files:\s*\[XFile\(path\)\],\s*text:\s*('[^']*')\s*,?\s*\)\s*,?\s*\)", r"Share.shareXFiles([XFile(path)], text: \1)", s)
+          open(p, "w", encoding="utf-8").write(s)
+          EOF
+            echo "remaining old-API references: $(grep -c 'SharePlus\|ShareParams' $F || true)"
+          fi
 
       - name: Build release APK
         working-directory: mobile
