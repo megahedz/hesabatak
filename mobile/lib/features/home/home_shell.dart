@@ -168,9 +168,18 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
       automaticallyImplyLeading: false,
       leading: showMenu
           ? IconButton(
-              tooltip: 'القائمة',
+              tooltip: 'القائمة الجانبية',
               icon: const Icon(Icons.menu, color: AppColors.navy),
-              onPressed: () => HomeShell.scaffoldKey.currentState?.openDrawer(),
+              onPressed: () {
+                final root = HomeShell.scaffoldKey.currentState;
+                if (root == null || !root.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('القائمة الجانبية غير متاحة هنا')),
+                  );
+                  return;
+                }
+                root.openDrawer();
+              },
             )
           : const BackButton(),
       title: Row(

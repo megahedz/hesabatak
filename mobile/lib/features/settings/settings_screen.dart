@@ -342,6 +342,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
                           subtitle: Text(session.companyName ?? '',
                               style: const TextStyle(fontSize: 12)),
+                          trailing: Text('إصدار ${AppConfig.appVersion}',
+                              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                         ),
                       ),
                       const SizedBox(height: 12),

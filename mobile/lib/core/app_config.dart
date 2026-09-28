@@ -12,6 +12,10 @@ class AppConfig {
     defaultValue: 'http://10.0.2.2:8000',
   );
 
+  /// إصدار الواجهة (يظهر في الإعدادات) — للتحقق بسرعة من أن الجهاز يعمل
+  /// على آخر بناء APK بعد التحديثات.
+  static const String appVersion = '0.7.0';
+
   /// The company every screen operates on. Delegates to AppSession, which
   /// is set once after login — no screen needs to change now that auth
   /// picks the company at runtime instead of this being a hardcoded constant.
