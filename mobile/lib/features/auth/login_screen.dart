@@ -482,7 +482,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Text(
                               'الخطة المجانية للسيرفر تحتاج حتى دقيقة للاستيقاظ بعد فترة خمول — المحاولة مستمرة تلقائيًا.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 11.5, color: AppColors.amber),
+                              style: TextStyle(fontSize: 11.5, color: AppColors.greenDark),
                             ),
                           ],
                           if (_isNetworkError && !_loading) ...[

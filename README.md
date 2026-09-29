@@ -18,6 +18,9 @@
    web) وينشرها على GitHub Pages: `https://megahedz.github.io/hesabatak/` —
    نفس الحساب يعمل من الهاتف والمتصفح (النسخة على الويب online-only بدون
    كاش محلي أو طابور مزامنة).
+   **ملاحظة لمرة واحدة:** مهمة النشر تحتاج تفعيل GitHub Pages أول مرة من
+   المستودع: Settings → Pages → Build and deployment → Source = **GitHub
+   Actions**. بعدها كل push ينشر تلقائيًا.
 
 ## الحالة الحالية (نهاية Phase 6 — تقارير تفصيلية + تصدير + نسخ احتياطي + Offline)
 
