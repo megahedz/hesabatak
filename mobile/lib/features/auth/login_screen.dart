@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
@@ -8,6 +10,13 @@ import '../../ui/widgets.dart';
 /// شاشة الدخول — نفس لغة التصميم المرجعي: خلفية فاتحة بلمسات زرقاء ناعمة،
 /// شعار حساباتك في الأعلى، ثم بطاقة بيضاء بها الحقول وزر أزرق «تسجيل الدخول».
 /// تتعامل مع الدخول وإنشاء الحساب الأول معًا (spec §56/§57).
+///
+/// ملاحظات ثبات الواجهة:
+///  * عرض المحتوى محدود بـ 480 لوجيكًا حتى لا تتمدد البطاقة على الأجهزة
+///    العريضة/التابلت، وكل الأبناء stretch حتى لا يعتمد التخطيط على عرض النص.
+///  * التسميات قصيرة، وقواعد كلمة المرور في helperText حتى لا تفيض الحقول.
+///  * أسفل الشاشة يظهر رقم الإصدار دائمًا — أسهل طريقة للتأكد أن الجهاز
+///    يعمل على آخر APK.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -51,29 +60,45 @@ class _LoginScreenState extends State<LoginScreen> {
     return score;
   }
 
+  /// رسالة عربية مفهومة من رد الخطأ القادم من السيرفر ({"detail": "..."}) —
+  /// أخطاء التسجيل (بريد مكرر/غير صالح، كلمة مرور ضعيفة) قابلة للإصلاح من
+  /// المستخدم فنعرضها كما هي، وغير ذلك نعرض رسالة عامة.
+  String _friendlyRegisterError(ApiException e) {
+    if (e.statusCode == 422) {
+      return 'هذه النسخة من التطبيق قديمة.\nحدّث التطبيق إلى آخر إصدار ثم أعد المحاولة.';
+    }
+    try {
+      final detail = (jsonDecode(e.body) as Map<String, dynamic>)['detail'];
+      if (detail is String && detail.isNotEmpty) return detail;
+    } catch (_) {}
+    return 'تعذر إنشاء الحساب. تأكد من البيانات وحاول مرة أخرى.';
+  }
+
   Future<void> _submit() async {
+    if (_loading) return; // حماية من الضغط المزدوج
     final phone = _phoneController.text.trim();
     final password = _passwordController.text;
     final email = _emailController.text.trim();
+
+    // تحقق محلي قبل أي طلب شبكة — رسائل فورية وواضحة.
     if (_isRegisterMode && _nameController.text.trim().isEmpty) {
       setState(() => _error = 'من فضلك أكمل كل البيانات المطلوبة');
       return;
     }
-    // البريد إجباري عند إنشاء الحساب (spec: إجباري مقترح ✓)
     if (_isRegisterMode && !_emailRe.hasMatch(email)) {
-      setState(() => _error = 'من فضلك أدخل بريدًا إلكترونيًا صحيحًا (مثال: name@example.com)');
+      setState(() => _error = 'من فضلك أدخل بريدًا إلكترونيًا صحيحًا\nمثال: name@example.com');
       return;
     }
-    // تحقق محلي من كلمة المرور قبل إرسال أي شيء للسيرفر
     if (_isRegisterMode &&
         (password.length < 8 || !password.contains(RegExp(r'[A-Za-z]')) || !password.contains(RegExp(r'\d')))) {
-      setState(() => _error = 'كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف ورقم واحد على الأقل');
+      setState(() => _error = 'كلمة المرور يجب أن تكون 8 أحرف على الأقل\nوتحتوي على حرف ورقم واحد على الأقل');
       return;
     }
     if (phone.isEmpty || password.isEmpty) {
       setState(() => _error = 'من فضلك أكمل كل البيانات المطلوبة');
       return;
     }
+
     setState(() {
       _loading = true;
       _error = null;
@@ -93,9 +118,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await _resolveActiveCompany();
     } on ApiException catch (e) {
-      setState(() => _error = e.statusCode == 401
-          ? 'رقم الهاتف أو كلمة المرور غير صحيحة'
-          : (_isRegisterMode ? 'تعذر إنشاء الحساب. جرّب رقم هاتف آخر.' : 'تعذر تسجيل الدخول. حاول مرة أخرى.'));
+      setState(() {
+        if (_isRegisterMode) {
+          _error = _friendlyRegisterError(e);
+        } else if (e.statusCode == 401) {
+          _error = 'رقم الهاتف أو كلمة المرور غير صحيحة';
+        } else {
+          _error = 'تعذر تسجيل الدخول. حاول مرة أخرى.';
+        }
+      });
     } on ApiNetworkException {
       // spec §49: never show raw socket/DNS details to the user. errno = 7
       // ("No address associated with hostname") means the phone's network
@@ -111,7 +142,7 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     } catch (e) {
       setState(() => _error = _isRegisterMode
-          ? 'تعذر إنشاء الحساب. جرّب رقم هاتف آخر.'
+          ? 'تعذر إنشاء الحساب. جرّب مرة أخرى.'
           : 'تعذر تسجيل الدخول. حاول مرة أخرى.');
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -177,6 +208,28 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// «نسيت كلمة المرور؟» — لا يوجد بعد endpoint لاستعادة كلمة المرور، فنشرح
+  /// ذلك بصراحة بدل الزر المضلل الذي كان يبدّل لوضع التسجيل فقط.
+  void _showForgotPasswordDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('استعادة كلمة المرور'),
+          content: const Text(
+            'استعادة كلمة المرور تلقائيًا غير متاحة بعد.\n\n'
+            'تواصل مع مالك المشروع لإعادة تعيينها، أو أنشئ حسابًا جديدًا برقم هاتف مختلف.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('حسنًا')),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -190,164 +243,210 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: SafeArea(
           child: Center(
+            // ConstraintBox يمنع تمدد البطاقة على الشاشات العريضة، و
+            // SingleChildScrollView يسمح بالتمرير عند فتح لوحة المفاتيح.
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const HesabatakLogo(size: 96),
-                  const SizedBox(height: 12),
-                  const Text('حساباتك',
-                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.navy)),
-                  const SizedBox(height: 4),
-                  const Text('إدارة أعمالك بسهولة',
-                      style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                  const SizedBox(height: 28),
-                  SectionCard(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (_isRegisterMode) ...[
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Center(child: HesabatakLogo(size: 96)),
+                    const SizedBox(height: 12),
+                    const Text('حساباتك',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                    const SizedBox(height: 4),
+                    const Text('إدارة أعمالك بسهولة',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                    const SizedBox(height: 28),
+                    SectionCard(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (_isRegisterMode) ...[
+                            TextField(
+                              controller: _nameController,
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(
+                                labelText: 'الاسم',
+                                prefixIcon: Icon(Icons.person_outline),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            TextField(
+                              controller: _emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              autocorrect: false,
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(
+                                labelText: 'البريد الإلكتروني',
+                                hintText: 'name@example.com',
+                                prefixIcon: Icon(Icons.alternate_email),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                          ],
                           TextField(
-                            controller: _nameController,
+                            controller: _phoneController,
+                            keyboardType: TextInputType.phone,
                             textInputAction: TextInputAction.next,
                             decoration: const InputDecoration(
-                              labelText: 'الاسم',
+                              labelText: 'رقم الهاتف',
                               prefixIcon: Icon(Icons.person_outline),
                             ),
                           ),
                           const SizedBox(height: 14),
                           TextField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            autocorrect: false,
-                            textInputAction: TextInputAction.next,
-                            decoration: const InputDecoration(
-                              labelText: 'البريد الإلكتروني',
-                              hintText: 'name@example.com',
-                              prefixIcon: Icon(Icons.alternate_email),
+                            controller: _passwordController,
+                            obscureText: _obscure,
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: 'كلمة المرور',
+                              helperText: _isRegisterMode ? '8 أحرف على الأقل مع رقم' : null,
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                                onPressed: () => setState(() => _obscure = !_obscure),
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 14),
-                        ],
-                        TextField(
-                          controller: _phoneController,
-                          keyboardType: TextInputType.phone,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'اسم المستخدم (رقم الهاتف)',
-                            prefixIcon: Icon(Icons.person_outline),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        TextField(
-                          controller: _passwordController,
-                          obscureText: _obscure,
-                          onChanged: (_) => setState(() {}),
-                          decoration: InputDecoration(
-                            labelText: _isRegisterMode ? 'كلمة المرور (8 أحرف على الأقل مع رقم)' : 'كلمة المرور',
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(
-                              icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                              onPressed: () => setState(() => _obscure = !_obscure),
-                            ),
-                          ),
-                        ),
-                        if (_isRegisterMode && _passwordController.text.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              for (var i = 0; i < 3; i++)
-                                Expanded(
-                                  child: Container(
-                                    height: 4,
-                                    margin: EdgeInsetsDirectional.only(end: i == 2 ? 0 : 6),
-                                    decoration: BoxDecoration(
-                                      color: i < _passwordStrength
-                                          ? (_passwordStrength == 1
-                                              ? AppColors.red
-                                              : _passwordStrength == 2
-                                                  ? AppColors.amber
-                                                  : AppColors.green)
-                                          : AppColors.greyTint,
-                                      borderRadius: BorderRadius.circular(2),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _passwordStrength < 2 ? 'كلمة مرور ضعيفة' : 'كلمة مرور جيدة',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: _passwordStrength < 2 ? AppColors.red : AppColors.green,
-                            ),
-                          ),
-                        ],
-                        if (_error != null) ...[
-                          const SizedBox(height: 12),
-                          SelectableText(_error!,
-                              style: const TextStyle(color: AppColors.red, fontSize: 13),
-                              textAlign: TextAlign.center),
-                        ],
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
+                          if (_isRegisterMode && _passwordController.text.isNotEmpty) ...[
+                            const SizedBox(height: 8),
                             Row(
                               children: [
-                                SizedBox(
-                                  height: 22,
-                                  width: 22,
-                                  child: Checkbox(
-                                    value: _rememberMe,
-                                    activeColor: AppColors.primary,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                    onChanged: (v) => setState(() => _rememberMe = v ?? true),
+                                for (var i = 0; i < 3; i++)
+                                  Expanded(
+                                    child: Container(
+                                      height: 4,
+                                      margin: EdgeInsetsDirectional.only(end: i == 2 ? 0 : 6),
+                                      decoration: BoxDecoration(
+                                        color: i < _passwordStrength
+                                            ? (_passwordStrength == 1
+                                                ? AppColors.red
+                                                : _passwordStrength == 2
+                                                    ? AppColors.amber
+                                                    : AppColors.green)
+                                            : AppColors.greyTint,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 6),
-                                const Text('تذكّني', style: TextStyle(fontSize: 13.5, color: AppColors.navy)),
                               ],
                             ),
-                            TextButton(
-                              onPressed: () => setState(() => _isRegisterMode = !_isRegisterMode),
-                              child: Text(
-                                _isRegisterMode ? 'لديك حساب؟ سجّل الدخول' : 'نسيت كلمة المرور؟',
-                                style: const TextStyle(fontSize: 13, color: AppColors.primary),
+                            const SizedBox(height: 4),
+                            Text(
+                              _passwordStrength < 2 ? 'كلمة مرور ضعيفة' : 'كلمة مرور جيدة',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: _passwordStrength < 2 ? AppColors.red : AppColors.green,
                               ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 6),
-                        FilledButton(
-                          onPressed: _loading ? null : _submit,
-                          child: _loading
-                              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Text(_isRegisterMode ? 'إنشاء حساب' : 'تسجيل الدخول'),
-                        ),
-                        if (_isNetworkError && !_loading) ...[
+                          if (_error != null) ...[
+                            const SizedBox(height: 12),
+                            SelectableText(_error!,
+                                style: const TextStyle(color: AppColors.red, fontSize: 13),
+                                textAlign: TextAlign.center),
+                          ],
                           const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: _submit,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('إعادة المحاولة'),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: Checkbox(
+                                      value: _rememberMe,
+                                      activeColor: AppColors.primary,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      onChanged: _loading ? null : (v) => setState(() => _rememberMe = v ?? true),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Text('تذكّني', style: TextStyle(fontSize: 13.5, color: AppColors.navy)),
+                                ],
+                              ),
+                              TextButton(
+                                onPressed: _loading
+                                    ? null
+                                    : () {
+                                        if (_isRegisterMode) {
+                                          setState(() => _isRegisterMode = false);
+                                        } else {
+                                          _showForgotPasswordDialog();
+                                        }
+                                      },
+                                child: Text(
+                                  _isRegisterMode ? 'لديك حساب؟ سجّل الدخول' : 'نسيت كلمة المرور؟',
+                                  style: const TextStyle(fontSize: 13, color: AppColors.primary),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                        if (!_isRegisterMode) ...[
-                          const SizedBox(height: 4),
-                          TextButton(
-                            onPressed: _loading ? null : () => setState(() => _isRegisterMode = true),
-                            child: const Text('حساب جديد؟ أنشئ حسابًا',
-                                style: TextStyle(color: AppColors.textSecondary)),
+                          const SizedBox(height: 6),
+                          // السيرفر على الخطة المجانية قد يكون نائمًا؛ أول عملية
+                          // تسجيل بعد فترة خمول قد تستغرق حتى دقيقة — نوضح ذلك
+                          // للمستخدم حتى لا يظن أن الزر معلّق.
+                          if (_isRegisterMode && !_loading) ...[
+                            Text(
+                              'ملاحظة: أول تسجيل بعد فترة راحة قد يستغرق حتى دقيقة.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary.withOpacity(0.9)),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
+                          FilledButton(
+                            onPressed: _loading ? null : _submit,
+                            child: _loading
+                                ? Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const SizedBox(
+                                          height: 18,
+                                          width: 18,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                                      const SizedBox(width: 10),
+                                      Text(_isRegisterMode ? 'جارٍ إنشاء الحساب…' : 'جارٍ تسجيل الدخول…'),
+                                    ],
+                                  )
+                                : Text(_isRegisterMode ? 'إنشاء حساب' : 'تسجيل الدخول'),
                           ),
+                          if (_isNetworkError && !_loading) ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _submit,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('إعادة المحاولة'),
+                            ),
+                          ],
+                          if (!_isRegisterMode) ...[
+                            const SizedBox(height: 4),
+                            TextButton(
+                              onPressed: _loading ? null : () => setState(() => _isRegisterMode = true),
+                              child: const Text('حساب جديد؟ أنشئ حسابًا',
+                                  style: TextStyle(color: AppColors.textSecondary)),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    // رقم الإصدار ظاهر دائمًا في شاشة الدخول — للتأكد فورًا أن
+                    // الجهاز يعمل على آخر APK بعد التحديث.
+                    const Text(
+                      'حساباتك • إصدار ${AppConfig.appVersion}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
