@@ -344,10 +344,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                           TextField(
                             controller: _phoneController,
-                            keyboardType: TextInputType.phone,
+                            // نص عادي (وليس كيبورد رقمي): يقبل رقم هاتف أو
+                            // اسم مستخدم بالحروف مثل Megahed.
+                            keyboardType: TextInputType.text,
+                            autocorrect: false,
+                            enableSuggestions: false,
                             textInputAction: TextInputAction.next,
                             decoration: const InputDecoration(
-                              labelText: 'رقم الهاتف',
+                              labelText: 'رقم الهاتف أو اسم المستخدم',
                               prefixIcon: Icon(Icons.person_outline),
                             ),
                           ),

@@ -13,7 +13,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write   # إنشاء GitHub Releases — الـ APK يتنزل ملفًا مباشرًا بدون ZIP
   pages: write
   id-token: write
 
@@ -172,3 +172,46 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # ========================================================================
+  # رفع الـ APK كملف مباشر في GitHub Releases — تحميل بضغطة واحدة بدون ZIP
+  # (مرفقات Actions دائمًا مضغوطة؛ أما ملفات Releases فتُنزَّل كما هي)
+  # الرابط الثابت: https://github.com/megahedz/hesabatak/releases/latest
+  # ========================================================================
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: hesabatak-app
+          path: dist
+
+      - name: Prepare release files (نسخة مرقمة + نسخة latest)
+        id: ver
+        run: |
+          V=$(ls dist/hesabatak-*.apk | head -1 | sed 's/.*hesabatak-\(.*\)\.apk/\1/')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          cp "dist/hesabatak-$V.apk" dist/hesabatak-latest.apk
+          ls -la dist
+
+      - name: Publish APK to GitHub Releases (direct .apk download)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ steps.ver.outputs.version }}
+          TAG="v$V"
+          # تحديث نفس الإصدار بعد كل push: احذف الريليز والتاب ثم أعد إنشائه
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            "dist/hesabatak-$V.apk" \
+            "dist/hesabatak-latest.apk" \
+            --title "حساباتك $V" \
+            --latest \
+            --notes "نزّل hesabatak-$V.apk مباشرة (ملف APK وليس ZIP) وثبّته على الهاتف."
+          echo "--- release assets ---"
+          gh release view "$TAG" --json assets -q '.assets[].name'
