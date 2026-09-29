@@ -282,16 +282,38 @@ class _QuickActionsGrid extends StatelessWidget {
   final VoidCallback onDone;
 
   // لون مميز لكل عملية — تمايز بصري أسرع من لون موحد.
-  static const _actions = <(String, IconData, Color, Color)>([
-    ('بيع', Icons.point_of_sale_rounded, AppColors.greenTint, AppColors.green),
-    ('شراء', Icons.shopping_cart_rounded, AppColors.blueTint, AppColors.primary),
-    ('قبض من عميل', Icons.north_rounded, AppColors.tealTint, AppColors.teal),
-    ('دفع لمورد', Icons.south_rounded, AppColors.amberTint, AppColors.amber),
-    ('مصروف', Icons.receipt_long_rounded, AppColors.redTint, AppColors.red),
-    ('إيداع رأس مال', Icons.add_business_rounded, AppColors.purpleTint, AppColors.purple),
-    ('سحب شخصي', Icons.person_remove_rounded, AppColors.greyTint, AppColors.navy),
-    ('تحويل بين الحسابات', Icons.swap_horiz_rounded, AppColors.blueTint, AppColors.primary),
-  ]);
+  // (label, icon, bg, fg) — parallel lists بدل records لتفادي أي اختلاف إصدار.
+  static const _labels = ['بيع', 'شراء', 'قبض من عميل', 'دفع لمورد', 'مصروف', 'إيداع رأس مال', 'سحب شخصي', 'تحويل بين الحسابات'];
+  static const _icons = [
+    Icons.point_of_sale_rounded,
+    Icons.shopping_cart_rounded,
+    Icons.north_rounded,
+    Icons.south_rounded,
+    Icons.receipt_long_rounded,
+    Icons.add_business_rounded,
+    Icons.person_remove_rounded,
+    Icons.swap_horiz_rounded,
+  ];
+  static const _bgs = [
+    AppColors.greenTint,
+    AppColors.blueTint,
+    AppColors.tealTint,
+    AppColors.amberTint,
+    AppColors.redTint,
+    AppColors.purpleTint,
+    AppColors.greyTint,
+    AppColors.blueTint,
+  ];
+  static const _fgs = [
+    AppColors.green,
+    AppColors.primary,
+    AppColors.teal,
+    AppColors.amber,
+    AppColors.red,
+    AppColors.purple,
+    AppColors.navy,
+    AppColors.primary,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -302,29 +324,27 @@ class _QuickActionsGrid extends StatelessWidget {
       crossAxisSpacing: 8,
       mainAxisSpacing: 12,
       childAspectRatio: 0.85,
-      children: _actions.map((a) {
-        final (label, icon, bg, fg) = a;
-        return InkWell(
+      children: [for (var i = 0; i < _labels.length; i++) InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => showQuickActionSheet(context, action: label, onDone: onDone),
+          onTap: () => showQuickActionSheet(context, action: _labels[i], onDone: onDone),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               IconTile(
-                icon: icon,
-                background: bg,
-                color: fg,
+                icon: _icons[i],
+                background: _bgs[i],
+                color: _fgs[i],
                 size: 46,
               ),
               const SizedBox(height: 6),
-              Text(label,
+              Text(_labels[i],
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   style: const TextStyle(fontSize: 10.5, color: AppColors.navy)),
             ],
           ),
-        );
-      }).toList(),
+        ),
+      ]
     );
   }
 }

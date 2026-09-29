@@ -231,13 +231,22 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
 class _QuickBar extends StatelessWidget {
   const _QuickBar();
 
-  static const _items = <(String, IconData, Color)>([
-    ('بيع', Icons.point_of_sale_rounded, AppColors.green),
-    ('شراء', Icons.shopping_cart_rounded, AppColors.primary),
-    ('مصروف', Icons.receipt_long_rounded, AppColors.red),
-    ('سداد', Icons.south_rounded, AppColors.amber),
-    ('استلام', Icons.north_rounded, AppColors.teal),
-  ]);
+  // (label, icon, color) — parallel lists بدل records لتفادي أي اختلاف إصدار.
+  static const _labels = ['بيع', 'شراء', 'مصروف', 'سداد', 'استلام'];
+  static const _icons = [
+    Icons.point_of_sale_rounded,
+    Icons.shopping_cart_rounded,
+    Icons.receipt_long_rounded,
+    Icons.south_rounded,
+    Icons.north_rounded,
+  ];
+  static const _colors = [
+    AppColors.green,
+    AppColors.primary,
+    AppColors.red,
+    AppColors.amber,
+    AppColors.teal,
+  ];
 
   /// اسم العملية في showQuickActionSheet لكل زر.
   static const _actionNames = ['بيع', 'شراء', 'مصروف', 'قبض من عميل', 'دفع لمورد'];
@@ -259,7 +268,7 @@ class _QuickBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            for (var i = 0; i < _items.length; i++)
+            for (var i = 0; i < _labels.length; i++)
               Expanded(child: _QuickBarButton(index: i)),
           ],
         ),
@@ -274,7 +283,9 @@ class _QuickBarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, icon, color) = _QuickBar._items[index];
+    final label = _QuickBar._labels[index];
+    final icon = _QuickBar._icons[index];
+    final color = _QuickBar._colors[index];
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () {
