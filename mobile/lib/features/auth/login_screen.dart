@@ -37,6 +37,17 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   bool _isNetworkError = false;
 
+  /// بعد 12 ثانية من الانتظار نعرض رسالة «السيرفر يستيقظ» حتى لا يظن المستخدم
+  /// أن التطبيق تعلّق (الخطة المجانية على Render تستيقظ حتى ~45 ثانية).
+  bool _wakingServer = false;
+  late final Stopwatch _sw = Stopwatch()..start();
+
+  void _checkWaking() {
+    if (_loading && !_wakingServer && _sw.elapsedMilliseconds > 12000) {
+      if (mounted) setState(() => _wakingServer = true);
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -103,10 +114,14 @@ class _LoginScreenState extends State<LoginScreen> {
       _loading = true;
       _error = null;
       _isNetworkError = false;
+      _wakingServer = false;
+      _sw.reset();
     });
+    // مؤقّت خفيف: بعد 12 ثانية من الانتظار نعرض رسالة استيقاظ السيرفر.
+    Future.delayed(const Duration(seconds: 12), () => _checkWaking());
     try {
       final result = _isRegisterMode
-          ? await _api.register(
+          ? await _api.registerLong(
               fullName: _nameController.text.trim(), phone: phone, email: email, password: password)
           : await _api.login(phone: phone, password: password);
 
@@ -145,7 +160,12 @@ class _LoginScreenState extends State<LoginScreen> {
           ? 'تعذر إنشاء الحساب. جرّب مرة أخرى.'
           : 'تعذر تسجيل الدخول. حاول مرة أخرى.');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _wakingServer = false;
+        });
+      }
     }
   }
 
@@ -287,7 +307,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.lock_outline, size: 13, color: AppColors.green),
+                        Icon(Icons.lock_outline, size: 13, color: AppColors.greenDark),
                         SizedBox(width: 4),
                         Text('كلمة المرور محفوظة مشفرة (bcrypt)',
                             style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
@@ -361,7 +381,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                                 ? AppColors.red
                                                 : _passwordStrength == 2
                                                     ? AppColors.amber
-                                                    : AppColors.green)
+                                                    : AppColors.greenDark)
                                             : AppColors.greyTint,
                                         borderRadius: BorderRadius.circular(2),
                                       ),
@@ -374,7 +394,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               _passwordStrength < 2 ? 'كلمة مرور ضعيفة' : 'كلمة مرور جيدة',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: _passwordStrength < 2 ? AppColors.red : AppColors.green,
+                                color: _passwordStrength < 2 ? AppColors.red : AppColors.greenDark,
                               ),
                             ),
                           ],
@@ -444,11 +464,27 @@ class _LoginScreenState extends State<LoginScreen> {
                                           width: 18,
                                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                                       const SizedBox(width: 10),
-                                      Text(_isRegisterMode ? 'جارٍ إنشاء الحساب…' : 'جارٍ تسجيل الدخول…'),
+                                      Flexible(
+                                        child: Text(
+                                            _wakingServer
+                                                ? 'السيرفر يستيقظ — لحظات ويتم الدخول…'
+                                                : _isRegisterMode
+                                                    ? 'جارٍ إنشاء الحساب…'
+                                                    : 'جارٍ تسجيل الدخول…',
+                                            overflow: TextOverflow.ellipsis),
+                                      ),
                                     ],
                                   )
                                 : Text(_isRegisterMode ? 'إنشاء حساب' : 'تسجيل الدخول'),
                           ),
+                          if (_wakingServer) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'الخطة المجانية للسيرفر تحتاج حتى دقيقة للاستيقاظ بعد فترة خمول — المحاولة مستمرة تلقائيًا.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 11.5, color: AppColors.amber),
+                            ),
+                          ],
                           if (_isNetworkError && !_loading) ...[
                             const SizedBox(height: 8),
                             OutlinedButton.icon(

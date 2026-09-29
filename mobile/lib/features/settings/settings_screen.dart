@@ -186,7 +186,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               leading: const IconTile(
                                 icon: Icons.groups_rounded,
                                 background: AppColors.greenTint,
-                                color: AppColors.green,
+                                color: AppColors.greenDark,
                                 size: 42,
                               ),
                               title: const Text('فريق العمل',

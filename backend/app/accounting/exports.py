@@ -29,7 +29,7 @@ from app.models.base import utcnow
 from app.accounting.detailed_reports import (
     sales_report, purchases_report, inventory_report, expense_report,
 )
-from app.accounting.reports import trial_balance, general_ledger, vat_report
+from app.accounting.reports import trial_balance, general_ledger, vat_report, balance_sheet, profit_and_loss
 
 
 class ExportError(Exception):
@@ -521,6 +521,43 @@ def _general_ledger_spec(db: Session, company_id: int, start, end,
     )
 
 
+def _balance_sheet_spec(db: Session, company_id: int, start, end) -> ExportSpec:
+    bs = balance_sheet(db, company_id)
+    rows = [
+        ["الأصول", bs["assets"]],
+        ["الخصوم", bs["liabilities"]],
+        ["حقوق الملكية", bs["equity"]],
+        ["الخصوم + حقوق الملكية", bs["liabilities_plus_equity"]],
+    ]
+    headers = ["البند", "المبلغ"]
+    return ExportSpec(
+        title="الميزانية العمومية", subtitle="الأصول = الخصوم + حقوق الملكية",
+        headers=headers, rows=rows,
+        totals=[("الحالة", "متوازنة" if bs["is_balanced"] else "غير متوازنة")],
+        file_name="hesabatak-balance-sheet", display_name="الميزانية-العمومية",
+        sheets=[("الميزانية", headers, rows)],
+    )
+
+
+def _profit_loss_spec(db: Session, company_id: int, start, end) -> ExportSpec:
+    pl = profit_and_loss(db, company_id)
+    rows = [
+        ["الإيرادات", pl["revenue"]],
+        ["تكلفة البضاعة المباعة", pl["cogs"]],
+        ["إجمالي الربح", pl["gross_profit"]],
+        ["المصروفات التشغيلية", pl["operating_expenses"]],
+        ["صافي الربح/الخسارة", pl["net_profit"]],
+    ]
+    headers = ["البند", "المبلغ"]
+    return ExportSpec(
+        title="تقرير الأرباح والخسائر", subtitle="كل الفترات",
+        headers=headers, rows=rows,
+        totals=[],
+        file_name="hesabatak-profit-loss", display_name="الأرباح-والخسائر",
+        sheets=[("الأرباح والخسائر", headers, rows)],
+    )
+
+
 EXPORTS: dict[str, Callable[..., ExportSpec]] = {
     "sales": _sales_spec,
     "purchases": _purchases_spec,
@@ -529,6 +566,8 @@ EXPORTS: dict[str, Callable[..., ExportSpec]] = {
     "vat": _vat_spec,
     "trial_balance": _trial_balance_spec,
     "general_ledger": _general_ledger_spec,
+    "balance_sheet": _balance_sheet_spec,
+    "profit_loss": _profit_loss_spec,
 }
 
 EXPORT_KEYS = sorted(EXPORTS.keys())

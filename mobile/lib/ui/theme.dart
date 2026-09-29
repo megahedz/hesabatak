@@ -6,17 +6,20 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  /// الأزرق الأساسي (الأزرار والتحديد)
-  static const Color primary = Color(0xFF1565C0);
+  /// الأزرق الأساسي (الأزرار والتحديد) — مستوحى من الكحلي المضيء في اللوجو
+  static const Color primary = Color(0xFF1A5C9E);
 
-  /// الكحلي للعناوين
-  static const Color navy = Color(0xFF12365B);
+  /// الكحلي للعناوين — نفس كحلي حرف M في اللوجو
+  static const Color navy = Color(0xFF123A66);
 
-  /// التركوازي (أيقونات ولمسات)
-  static const Color teal = Color(0xFF18A0A0);
+  /// التركوازي (أيقونات ولمسات) — درجة السيان/التركوازي في اللوجو
+  static const Color teal = Color(0xFF25B7A8);
 
-  /// الأخضر (رصيد، أرباح، نجاح)
-  static const Color green = Color(0xFF1E9E6A);
+  /// الأخضر (رصيد، أرباح، نجاح) — أخضر سهم النمو في اللوجو
+  static const Color green = Color(0xFF35D89A);
+
+  /// أخضر داكن للنصوص فوق الخلفيات الفاتحة (تباين أعلى من green)
+  static const Color greenDark = Color(0xFF1E9E6A);
 
   /// الأحمر (مصروفات، أرصدة مستحقة)
   static const Color red = Color(0xFFE05252);

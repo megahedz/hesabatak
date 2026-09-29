@@ -4,6 +4,7 @@ import '../../core/app_config.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../home/home_shell.dart';
+import '../../ui/attachment_field.dart';
 import 'supplier_model.dart';
 import 'supplier_statement_screen.dart';
 
@@ -172,6 +173,9 @@ class _AddSupplierSheetState extends State<_AddSupplierSheet> {
   final _openingBalanceController = TextEditingController(text: '0');
   bool _saving = false;
 
+  int? _createdId;
+  bool _saved = false;
+
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
@@ -181,13 +185,15 @@ class _AddSupplierSheetState extends State<_AddSupplierSheet> {
     }
     setState(() => _saving = true);
     try {
-      await _api.createSupplier(
+      final res = await _api.createSupplier(
         companyId: AppConfig.companyId,
         name: name,
         phone: _phoneController.text.trim(),
         openingBalance: double.tryParse(_openingBalanceController.text.trim()) ?? 0,
       );
-      if (mounted) Navigator.of(context).pop(true);
+      _createdId = res['id'] as int?;
+      // بعد الحفظ: تحويل النموذج لوضع «إرفاق ملفات» على المورد الجديد.
+      if (mounted && _createdId != null) setState(() => _saved = true);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -201,6 +207,28 @@ class _AddSupplierSheetState extends State<_AddSupplierSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // وضع ما بعد الحفظ: إرفاق ملفات على المورد الجديد ثم إغلاق.
+    if (_saved && _createdId != null) {
+      return Padding(
+        padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('تم حفظ المورد ✓',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.greenDark)),
+            const SizedBox(height: 12),
+            AttachmentField(ownerKind: 'supplier', ownerId: _createdId!),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('تم'),
+            ),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: EdgeInsets.only(
           left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),

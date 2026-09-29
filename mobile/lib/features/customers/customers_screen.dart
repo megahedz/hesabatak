@@ -5,6 +5,7 @@ import '../../core/app_config.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../home/home_shell.dart';
+import '../../ui/attachment_field.dart';
 import 'customer_model.dart';
 import 'customer_statement_screen.dart';
 
@@ -173,6 +174,8 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
   final _openingBalanceController = TextEditingController(text: '0');
   bool _saving = false;
 
+  int? _createdId;
+
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
@@ -182,13 +185,15 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
     }
     setState(() => _saving = true);
     try {
-      await _api.createCustomer(
+      final res = await _api.createCustomer(
         companyId: AppConfig.companyId,
         name: name,
         phone: _phoneController.text.trim(),
         openingBalance: double.tryParse(_openingBalanceController.text.trim()) ?? 0,
       );
-      if (mounted) Navigator.of(context).pop(true);
+      _createdId = res['id'] as int?;
+      // بعد الحفظ: تحويل النموذج لوضع «إرفاق ملفات» على العميل الجديد.
+      if (mounted && _createdId != null) setState(() => _saved = true);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -200,8 +205,32 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
     }
   }
 
+  bool _saved = false;
+
   @override
   Widget build(BuildContext context) {
+    // وضع ما بعد الحفظ: إرفاق ملفات على العميل الجديد ثم إغلاق.
+    if (_saved && _createdId != null) {
+      return Padding(
+        padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('تم حفظ العميل ✓',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.greenDark)),
+            const SizedBox(height: 12),
+            AttachmentField(ownerKind: 'customer', ownerId: _createdId!),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('تم'),
+            ),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: EdgeInsets.only(
           left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),

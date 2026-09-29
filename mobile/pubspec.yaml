@@ -1,7 +1,7 @@
 name: hesabatak
 description: "حساباتك - حسابات مشروعك ببساطة"
 publish_to: 'none'
-version: 0.7.6+13
+version: 0.7.7+14
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -13,6 +13,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.6
   http: ^1.2.0
+  http_parser: ^4.0.2            # multipart upload content-types (المرفقات)
+  web: ^1.1.0                    # browser APIs for web build (تنزيل الملفات على الويب)
   intl: any                      # resolved to the version pinned by flutter_localizations
   characters: ^1.3.0
   flutter_secure_storage: ^9.2.2  # Phase 5: persistent session (Android Keystore)

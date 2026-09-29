@@ -1,5 +1,6 @@
-import 'dart:io';
+import 'dart:io' as io show File;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -22,6 +23,14 @@ Future<bool> shareReportExport(BuildContext context, String reportKey) async {
   try {
     final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
     final file = await api.downloadExport(reportKey: reportKey, fmt: format);
+    if (kIsWeb) {
+      // المتصفح: تنزيل مباشر بدون شير النظام (لا ملفات مؤقتة هناك).
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile.fromData(file.bytes, name: file.fileName)],
+            text: 'تقرير حساباتك'),
+      );
+      return true;
+    }
     final path = await _writeTemp(file.bytes, file.fileName);
     await SharePlus.instance.share(
       ShareParams(files: [XFile(path)], text: 'تقرير حساباتك'),
@@ -41,7 +50,20 @@ Future<bool> shareReportExport(BuildContext context, String reportKey) async {
   }
 }
 
+/// مشاركة ملف عام (يُستخدم لفتح/تنزيل المرفقات وكشوف الحساب). يستخدم نفس
+/// مسار الكتابة المؤقتة + شير النظام.
+Future<bool> shareFile(BuildContext context, List<int> bytes, String fileName) async {
+  if (kIsWeb) {
+    // المتصفح: تنزيل مباشر عبر Blob (share sheet غير موجود على الويب).
+    return _shareOnWeb(bytes, fileName);
+  }
+  return shareBackupFile(context, bytes, fileName);
+}
+
 Future<bool> shareBackupFile(BuildContext context, List<int> bytes, String fileName) async {
+  if (kIsWeb) {
+    return _shareOnWeb(bytes, fileName);
+  }
   final messenger = ScaffoldMessenger.of(context);
   try {
     final path = await _writeTemp(bytes, fileName);
@@ -56,9 +78,29 @@ Future<bool> shareBackupFile(BuildContext context, List<int> bytes, String fileN
   }
 }
 
+/// تنزيل الملف مباشرة في المتصفح عبر Blob + رابط مؤقت (يُستخدم على الويب فقط).
+Future<bool> _shareOnWeb(List<int> bytes, String fileName) async {
+  try {
+    final blob = web.Blob([bytes.toJS].toJS);
+    final url = web.URL.createObjectURL(blob);
+    final anchor = web.HTMLAnchorElement()
+      ..href = url
+      ..download = fileName;
+    anchor.click();
+    web.URL.revokeObjectURL(url);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 Future<String> _writeTemp(List<int> bytes, String fileName) async {
+  if (kIsWeb) {
+    // المتصفح: يكفي اسم الملف — مشاركة الملف نفسه تتم عبر XFile.fromData.
+    return fileName;
+  }
   final dir = await getTemporaryDirectory();
-  final file = File('${dir.path}/$fileName');
+  final file = io.File('${dir.path}/$fileName');
   await file.writeAsBytes(bytes, flush: true);
   return file.path;
 }

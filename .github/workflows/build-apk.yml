@@ -12,6 +12,11 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -93,3 +98,48 @@ jobs:
         with:
           name: hesabatak-app
           path: mobile/build/app/outputs/flutter-apk/hesabatak-*.apk
+
+  # ========================================================================
+  # نسخة الويب: نفس الكود يُبنى للمتصفح ويُنشر على GitHub Pages — يفتح من
+  # أي كمبيوتر على: https://megahedz.github.io/hesabatak/
+  # (النسخة على الويب تعمل online-only: بدون كاش محلي أو طابور مزامنة)
+  # ========================================================================
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.0"
+          channel: "stable"
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Build web (with production API base URL)
+        working-directory: mobile
+        run: >
+          flutter build web --release --base-href /hesabatak/
+          --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://hesabatak-backend-srps.onrender.com' }}
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: mobile/build/web
+
+  deploy-web:
+    if: github.ref == 'refs/heads/main'
+    needs: web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

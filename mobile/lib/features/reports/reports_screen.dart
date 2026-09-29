@@ -159,7 +159,7 @@ class _InventoryTab extends StatelessWidget {
         final isLow = r['is_low'] as bool;
         final sku = r['sku'] as String?;
         final title = sku == null || sku.isEmpty ? (r['name'] as String) : '${r['name']} ($sku)';
-        final statusColor = isOut ? AppColors.red : (isLow ? AppColors.amber : AppColors.green);
+        final statusColor = isOut ? AppColors.red : (isLow ? AppColors.amber : AppColors.greenDark);
         final statusText = isOut ? 'نفد' : (isLow ? 'منخفض' : 'متوفر');
         return _ReportTile(
           icon: Icons.inventory_2_rounded,
@@ -309,6 +309,8 @@ class _TrialBalanceTab extends StatelessWidget {
   const _TrialBalanceTab({required this.api});
   final ApiClient api;
 
+  static const _fmt = NumberFormat('#,##0.##', 'en');
+
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.##', 'en');
@@ -336,7 +338,7 @@ class _TrialBalanceTab extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: isBalanced ? AppColors.green : AppColors.red,
+                  color: isBalanced ? AppColors.greenDark : AppColors.red,
                 ),
               ),
             ),
@@ -345,6 +347,21 @@ class _TrialBalanceTab extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               child: Column(
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: OutlinedButton.icon(
+                        onPressed: () => shareReportExport(context, 'trial_balance'),
+                        icon: const Icon(Icons.ios_share, size: 15),
+                        label: const Text('تصدير PDF/Excel', style: TextStyle(fontSize: 12.5)),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                      ),
+                    ),
+                  ),
                   for (final r in rows)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -402,6 +419,18 @@ class _BalanceSheetTab extends StatelessWidget {
             SectionCard(
               child: Column(
                 children: [
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: OutlinedButton.icon(
+                      onPressed: () => shareReportExport(context, 'balance_sheet'),
+                      icon: const Icon(Icons.ios_share, size: 15),
+                      label: const Text('تصدير PDF/Excel', style: TextStyle(fontSize: 12.5)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                  ),
                   SummaryRow(label: 'الأصول (Assets)', value: money('assets'), emphasized: true),
                   const Divider(height: 16),
                   SummaryRow(label: 'الخصوم (Liabilities)', value: money('liabilities')),
@@ -425,7 +454,7 @@ class _BalanceSheetTab extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: isBalanced ? AppColors.green : AppColors.red),
+                    color: isBalanced ? AppColors.greenDark : AppColors.red),
               ),
             ),
           ],
@@ -459,6 +488,18 @@ class _ProfitLossTab extends StatelessWidget {
             SectionCard(
               child: Column(
                 children: [
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: OutlinedButton.icon(
+                      onPressed: () => shareReportExport(context, 'profit_loss'),
+                      icon: const Icon(Icons.ios_share, size: 15),
+                      label: const Text('تصدير PDF/Excel', style: TextStyle(fontSize: 12.5)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                  ),
                   SummaryRow(label: 'الإيرادات', value: money('revenue')),
                   SummaryRow(label: 'تكلفة البضاعة المباعة', value: money('cogs')),
                   const Divider(height: 16),
@@ -469,7 +510,7 @@ class _ProfitLossTab extends StatelessWidget {
                     label: netProfit >= 0 ? 'صافي الربح' : 'صافي الخسارة',
                     value: money('net_profit'),
                     emphasized: true,
-                    valueColor: netProfit >= 0 ? AppColors.green : AppColors.red,
+                    valueColor: netProfit >= 0 ? AppColors.greenDark : AppColors.red,
                   ),
                 ],
               ),

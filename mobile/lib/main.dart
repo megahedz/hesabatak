@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'core/api_client.dart';
+import 'core/app_config.dart';
 import 'core/local_store.dart';
 import 'core/session.dart';
 import 'core/sync_manager.dart';
@@ -12,6 +15,11 @@ Future<void> main() async {
   // frame decides between login screen and HomeShell based on its result.
   WidgetsFlutterBinding.ensureInitialized();
   await AppSession.instance.restore();
+  // تسريع الدخول: نبعت ping خفيف فور الفتح ليوقظ السيرفر النائم (Render free
+  // tier) أثناء ما المستخدم يكتب بياناته — fire-and-forget بدون أي انتظار.
+  if (!kIsWeb) {
+    ApiClient.warmUpServer(AppConfig.apiBaseUrl);
+  }
   // Phase 6: local cache + sync queue must exist before any screen can
   // render from cache or enqueue an offline write. Failures here must never
   // block the app — it just runs online-only.

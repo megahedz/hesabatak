@@ -10,3 +10,4 @@ from .documents import (
     ExpenseCategory, Expense,
 )
 from .misc import AuditLog, AppSetting
+from .attachments import Attachment, MAX_ATTACHMENT_BYTES, ALLOWED_CONTENT_TYPES

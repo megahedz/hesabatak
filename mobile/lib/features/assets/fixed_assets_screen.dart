@@ -190,7 +190,7 @@ class _FixedAssetsScreenState extends State<FixedAssetsScreen> {
                             const IconTile(
                               icon: Icons.domain_rounded,
                               background: AppColors.greenTint,
-                              color: AppColors.green,
+                              color: AppColors.greenDark,
                               size: 48,
                             ),
                             const SizedBox(width: 12),
@@ -251,7 +251,7 @@ class _FixedAssetsScreenState extends State<FixedAssetsScreen> {
                                           fontSize: 13.5,
                                           fontWeight: FontWeight.w800,
                                           color: (double.tryParse(line['debit'] as String? ?? '') ?? 0) > 0
-                                              ? AppColors.green
+                                              ? AppColors.greenDark
                                               : AppColors.red,
                                         ),
                                       ),

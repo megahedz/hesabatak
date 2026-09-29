@@ -56,7 +56,7 @@ class _CustomerStatementScreenState extends State<CustomerStatementScreen> {
                         label: 'الرصيد الحالي',
                         value: AppFmt.money(s.closingBalance),
                         emphasize: true,
-                        valueColor: s.closingBalance > 0 ? AppColors.red : AppColors.green,
+                        valueColor: s.closingBalance > 0 ? AppColors.red : AppColors.greenDark,
                       ),
                     ],
                   ),

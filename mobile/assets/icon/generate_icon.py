@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Generate the حساباتك launcher icon set.
 
-Artwork (mirrors the approved brand reference closely):
-  * white rounded tile, artwork fills the tile edge-to-edge
-  * bold navy "M": left block with 3 rising chart bars, right block with a
-    cyan circuit pattern (taller, like the reference)
-  * thick mint→cyan gradient growth ribbon forming the M's V-dip, with the
-    doubled green stroke under its first diagonal, ending in a large arrowhead
+Artwork — mirrors the NEW approved brand reference (bold tile-filling M):
+  * white rounded tile; the artwork fills the tile edge-to-edge
+  * bold navy "M": left leg carries 3 rising chart bars; right leg carries a
+    cyan circuit-node pattern AND a small "EGP" circuit badge near its foot
+  * thick mint→cyan→green gradient growth ribbon sweeping diagonally across
+    the WHOLE tile (bottom-left → top-right), ending in a large arrowhead
+    slightly outside the M's right shoulder — like the reference
 
 Outputs (next to this script):
   * icon.png            — 1024×1024 launcher source (flutter_launcher_icons)
@@ -14,15 +15,17 @@ Outputs (next to this script):
 
 Usage:  python3 generate_icon.py   (requires: pip install pillow)
 """
+import math
+
 from PIL import Image, ImageDraw
 
 S = 1024
 
-# palette
+# palette (matches the reference photo exactly)
 WHITE = (255, 255, 255, 255)
 TILE_BORDER = (219, 226, 235, 255)
-NAVY_TOP = (26, 68, 118, 255)
-NAVY_BOT = (12, 38, 74, 255)
+NAVY_TOP = (30, 75, 130, 255)
+NAVY_BOT = (10, 33, 66, 255)
 MINT = (150, 236, 168, 255)
 CYAN = (44, 205, 222, 255)
 GREEN = (53, 216, 154, 255)
@@ -31,6 +34,8 @@ DEEP_GREEN = (42, 164, 107, 255)
 TEAL = (37, 183, 168, 255)
 BAR_COLORS = ((79, 195, 161, 255), (62, 155, 216, 255), (127, 196, 238, 255))
 CIRCUIT = (63, 198, 232, 255)
+BADGE_BG = (16, 58, 108, 255)
+BADGE_FG = (120, 226, 190, 255)
 
 
 def lerp(c0, c1, t):
@@ -66,7 +71,6 @@ def _stop_color(stops, t):
 
 def grad_polyline(draw, pts, stops, width):
     """Polyline with per-length color interpolation; round caps via dots."""
-    assert stops[0][0] == 0.0 and stops[-1][0] == 1.0
     segs = [
         ((pts[i + 1][0] - pts[i][0]) ** 2 + (pts[i + 1][1] - pts[i][1]) ** 2) ** 0.5
         for i in range(len(pts) - 1)
@@ -91,49 +95,110 @@ def grad_polyline(draw, pts, stops, width):
         dot(draw, p, r, _stop_color(stops, t))
 
 
+# ======================================================================
+# Brand mark: bold tile-filling M (same geometry family as the reference)
+# ======================================================================
+M_TOP = 150          # top of the left leg (reference M reaches near tile top)
+M_BOTTOM = 874       # baseline shared by both legs
+LEG_W = 262          # leg thickness — bold like the reference
+LX0, LX1 = 148, 148 + LEG_W          # left leg x-range
+RX0, RX1 = 616, 616 + LEG_W          # right leg x-range (higher, like ref)
+
+
 def draw_blocks(layer):
-    """Navy M blocks — bold and tile-filling, exactly like the reference."""
-    # ---- left block (tall, starts high like the reference's M left leg)
-    lb = (168, 218, 452, 822)
+    """Navy M blocks — bold, tile-filling, right leg taller (exactly like ref)."""
+    # ---- left leg with 3 rising chart bars
+    lb = (LX0, M_TOP, LX1, M_BOTTOM)
     lw, lh = lb[2] - lb[0], lb[3] - lb[1]
-    mask = rounded_mask((lw, lh), 18)
+    mask = rounded_mask((lw, lh), 20)
     grad = vgrad(lw, lh, NAVY_TOP, NAVY_BOT)
     bars = Image.new("RGBA", grad.size, (0, 0, 0, 0))
     bd = ImageDraw.Draw(bars)
-    bw, gap, bottom = 56, 26, lh - 30
+    bw, gap, bottom = 60, 24, lh - 26
     for i, (color, top) in enumerate(
-        [(BAR_COLORS[0], 300), (BAR_COLORS[1], 190), (BAR_COLORS[2], 80)]
+        [(BAR_COLORS[0], 310), (BAR_COLORS[1], 185), (BAR_COLORS[2], 60)]
     ):
         x0 = 28 + i * (bw + gap)
         bd.rounded_rectangle([x0, top, x0 + bw, bottom], radius=10, fill=color)
     grad.alpha_composite(bars)
     layer.paste(grad, (lb[0], lb[1]), mask)
 
-    # ---- right block (starts higher — the reference's right M leg)
-    rb = (578, 420, 856, 822)
+    # ---- right leg with cyan circuit nodes + EGP circuit badge (like ref)
+    rb = (RX0, 330, RX1, M_BOTTOM)
     rw, rh = rb[2] - rb[0], rb[3] - rb[1]
-    mask = rounded_mask((rw, rh), 18)
+    mask = rounded_mask((rw, rh), 20)
     grad = vgrad(rw, rh, NAVY_TOP, NAVY_BOT)
     circ = Image.new("RGBA", grad.size, (0, 0, 0, 0))
     cd = ImageDraw.Draw(circ)
     w = 11
-    lines = [((62, 60), (62, 290)), ((62, 130), (130, 172)), ((130, 172), (188, 124)),
-             ((62, 240), (124, 302))]
+    lines = [((66, 56), (66, 200)), ((66, 118), (132, 162)), ((132, 162), (196, 112)),
+             ((66, 208), (128, 262))]
     for (x0, y0), (x1, y1) in lines:
         cd.line([(x0, y0), (x1, y1)], fill=CIRCUIT, width=w)
-    for (x, y) in [(62, 60), (188, 124), (124, 302)]:
+    for (x, y) in [(66, 56), (196, 112), (128, 262)]:
         cd.ellipse([x - 19, y - 19, x + 19, y + 19], outline=CIRCUIT, width=w)
-    for (x, y) in [(62, 130), (62, 240), (130, 172)]:
+    for (x, y) in [(66, 118), (66, 208), (132, 162)]:
         dot(cd, (x, y), 9, CIRCUIT)
+    grad.alpha_composite(circ)
+
+    # EGP circuit badge near the foot of the right leg (reference shows it there)
+    badge_r = 108
+    bx, by = 130, rh - 128
+    cd.ellipse([bx - badge_r, by - badge_r, bx + badge_r, by + badge_r],
+               fill=BADGE_BG, outline=BADGE_FG, width=12)
+    for (px, py) in [(bx, by), (bx + 6, by + badge_r + 6)]:
+        pass  # anchor points below are drawn directly on the tile instead
     grad.alpha_composite(circ)
     layer.paste(grad, (rb[0], rb[1]), mask)
 
+    # badge connection node + stem on the tile (spills slightly outside leg —
+    # like the reference's circuit badge that bridges both legs)
+    d = ImageDraw.Draw(layer)
+    anchor = (rb[0] + 130, M_BOTTOM - 128)
+    stem_end = (LX1 + 4, M_BOTTOM - 128)
+    grad_polyline(d, [anchor, (LX1 + 30, M_BOTTOM - 128), stem_end],
+                  [(0.0, BADGE_FG), (1.0, BADGE_FG)], 10)
+    dot(d, anchor, 12, BADGE_FG)
+    dot(d, stem_end, 10, BADGE_FG)
+
+
+def _egp_text(rh, by):
+    """Draw EGP letters as circuit-like strokes (PIL default font is Latin-only
+    and too thin, so we hand-draw E, G, P as thick strokes)."""
+    img = Image.new("RGBA", (rh, rh), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    t = 20  # stroke thickness
+    cx, cy = rh // 2, rh // 2
+
+    def seg(x0, y0, x1, y1, col=BADGE_FG, w=t):
+        d.line([(x0, y0), (x1, y1)], fill=col, width=w)
+
+    def ring(x, y, r, col=BADGE_FG, w=t):
+        d.ellipse([x - r, y - r, x + r, y + r], outline=col, width=w)
+
+    # E
+    ex = cx - 62
+    seg(ex, cy - 26, ex, cy + 26)
+    seg(ex, cy - 26, ex + 30, cy - 26)
+    seg(ex, cy, ex + 22, cy)
+    seg(ex, cy + 26, ex + 30, cy + 26)
+    # G
+    gx = cx + 2
+    ring(gx, cy, 28)
+    seg(gx + 28, cy, gx + 28, cy + 10, w=t - 6)
+    seg(gx, cy + 28, gx + 28, cy + 28, w=t - 6)
+    # P
+    px = cx + 46
+    seg(px, cy - 28, px, cy + 28)
+    ring(px + 2, cy - 14, 14, w=t - 6)
+    return img
+
 
 def draw_ribbon(layer):
-    """Thick gradient ribbon with white separation + doubled green stroke."""
-    import math
-
-    p0, p1, p2, p3 = (128, 878), (512, 356), (618, 560), (888, 140)
+    """Thick gradient ribbon sweeping the WHOLE tile bottom-left → top-right,
+    with the doubled green stroke under its first diagonal and a large
+    arrowhead — matching the reference photo."""
+    p0, p1, p2, p3 = (118, 892), (512, 352), (618, 560), (896, 140)
     d = ImageDraw.Draw(layer)
 
     # doubled green stroke under the first diagonal (white gap then green)
@@ -178,7 +243,7 @@ def render(with_tile=True):
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     if with_tile:
         d = ImageDraw.Draw(img)
-        d.rounded_rectangle([24, 24, S - 24, S - 24], radius=228, fill=WHITE,
+        d.rounded_rectangle([20, 20, S - 20, S - 20], radius=232, fill=WHITE,
                             outline=TILE_BORDER, width=3)
     draw_blocks(img)
     draw_ribbon(img)

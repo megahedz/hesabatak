@@ -70,7 +70,7 @@ Future<void> showNotificationsSheet(BuildContext context) async {
                         const IconTile(
                           icon: Icons.check_circle_rounded,
                           background: AppColors.greenTint,
-                          color: AppColors.green,
+                          color: AppColors.greenDark,
                           size: 56,
                         ),
                         const SizedBox(height: 12),

@@ -1,7 +1,11 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+
+/// بديل فارغ عند التشغيل على الويب (sqflite غير مدعوم في المتصفح):
+/// الكاش وطابور المزامنة معطّلان على الويب — التطبيق يعمل online-only هناك.
 
 /// Phase 6 offline-first store (spec §42/§43):
 ///
@@ -21,6 +25,9 @@ class LocalStore {
   Database? _db;
 
   Future<Database> get db async {
+    if (kIsWeb) {
+      throw UnsupportedError('sqflite is not available on the web');
+    }
     final existing = _db;
     if (existing != null && existing.isOpen) return existing;
     final databasesPath = await getDatabasesPath();

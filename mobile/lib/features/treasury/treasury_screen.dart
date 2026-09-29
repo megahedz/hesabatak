@@ -293,7 +293,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                             fontSize: 13.5,
                             fontWeight: FontWeight.w800,
                             color: (double.tryParse(line['debit'] as String? ?? '') ?? 0) > 0
-                                ? AppColors.green
+                                ? AppColors.greenDark
                                 : AppColors.red,
                           ),
                         ),

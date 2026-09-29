@@ -12,10 +12,16 @@ from datetime import date, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Body, UploadFile, File, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+
+from app.models.attachments import (
+    Attachment, MAX_ATTACHMENT_BYTES, ALLOWED_CONTENT_TYPES,
+)
+from app.models.documents import SalesInvoice, PurchaseInvoice, Payment
 
 from app.models.base import Base, engine, SessionLocal
 from app.models import Company, Customer, Supplier, Product
@@ -36,6 +42,7 @@ from app.accounting.dashboard_stats import monthly_sales_series, period_purchase
 from app.accounting.exports import (
     build_pdf, build_xlsx, EXPORTS, ExportError,
 )
+from app.accounting.exports import _balance_sheet_spec, _profit_loss_spec
 from app.accounting.backup import export_backup_file, restore_backup, RestoreError
 from app.accounting.inventory import opening_stock_value
 from app.models.accounts import SystemAccountCode
@@ -47,6 +54,23 @@ from fastapi import Response
 from urllib.parse import quote
 
 app = FastAPI(title="حساباتك API")
+
+# كورس: تطبيق الويب (على نطاق مختلف) وأي عميل يستطيع استدعاء الـ API بحرية؛
+# التوكن يبقى هو الحماية الحقيقية لكل نقطة نهاية.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+def health():
+    """نقطة تهيئة خفيفة يستدعيها التطبيق فور فتحه لإيقاظ السيرفر النائم
+    (Render free tier) قبل ما المستخدم يضغط تسجيل الدخول."""
+    return {"status": "ok"}
 
 
 @app.on_event("startup")
@@ -393,6 +417,111 @@ def get_supplier_statement(company_id: int, supplier_id: int, db: Session = Depe
 
 
 # ---------------------------------------------------------------- operations
+ATTACHMENT_OWNER_KINDS = {
+    "customer": "customer_id",
+    "supplier": "supplier_id",
+    "sale": "sales_invoice_id",
+    "purchase": "purchase_invoice_id",
+    "payment": "payment_id",
+}
+
+
+def _attachment_owner_id(company_id: int, owner_kind: str, owner_id: int, db: Session):
+    """Resolve + validate the attachment's owner row (company-scoped)."""
+    column = ATTACHMENT_OWNER_KINDS.get(owner_kind)
+    if column is None:
+        raise HTTPException(400, "نوع المرفق يجب أن يكون: customer أو supplier أو sale أو purchase أو payment.")
+    model = {
+        "customer": Customer, "supplier": Supplier,
+        "sale": SalesInvoice, "purchase": PurchaseInvoice, "payment": Payment,
+    }[owner_kind]
+    row = db.query(model).filter(model.id == owner_id, model.company_id == company_id).one_or_none()
+    if row is None:
+        raise HTTPException(404, "المستند المرفق إليه غير موجود في هذه الشركة.")
+    return column, owner_id
+
+
+@scoped.post("/attachments/{owner_kind}/{owner_id}")
+async def upload_attachment(
+    company_id: int, owner_kind: str, owner_id: int,
+    file: UploadFile = File(...),
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
+    """رفع مرفق (صورة أو PDF) على عميل/مورد/فاتورة/دفعة.
+    الملف يُخزَّن داخل قاعدة البيانات نفسها (BLOB) لأن قرص Render المجاني مؤقت."""
+    column, resolved_id = _attachment_owner_id(company_id, owner_kind, owner_id, db)
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "الملف فارغ.")
+    if len(content) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(400, "حجم الملف يتجاوز الحد المسموح (2.5 ميغابايت).")
+    ctype = (file.content_type or "").lower().split(";")[0].strip()
+    if ctype not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(400, "يُسمح فقط بالصور (JPG/PNG/WEBP/GIF/HEIC) وملفات PDF.")
+    att = Attachment(
+        company_id=company_id,
+        **{column: resolved_id},
+        file_name=(file.filename or "attachment").strip()[:255] or "attachment",
+        content_type=ctype,
+        size_bytes=len(content),
+        data=content,
+    )
+    db.add(att)
+    db.commit()
+    return {"id": att.id, "file_name": att.file_name, "content_type": att.content_type,
+            "size_bytes": att.size_bytes}
+
+
+@scoped.get("/attachments/{owner_kind}/{owner_id}")
+def list_attachments(company_id: int, owner_kind: str, owner_id: int,
+                     db: Session = Depends(get_db)):
+    """قائمة مرفقات مستند معين (بدون محتوى الملف)."""
+    column, _ = _attachment_owner_id(company_id, owner_kind, owner_id, db)
+    rows = (db.query(Attachment)
+            .filter(Attachment.company_id == company_id, getattr(Attachment, column) == owner_id)
+            .order_by(Attachment.id.asc()).all())
+    return [{"id": a.id, "file_name": a.file_name, "content_type": a.content_type,
+             "size_bytes": a.size_bytes} for a in rows]
+
+
+@scoped.get("/attachments/{owner_kind}/{owner_id}/{attachment_id}")
+def download_attachment(company_id: int, owner_kind: str, owner_id: int, attachment_id: int,
+                        db: Session = Depends(get_db)):
+    """تنزيل محتوى المرفق (الملف الأصلي كما رُفع)."""
+    column, _ = _attachment_owner_id(company_id, owner_kind, owner_id, db)
+    att = (db.query(Attachment)
+           .filter(Attachment.company_id == company_id,
+                   getattr(Attachment, column) == owner_id,
+                   Attachment.id == attachment_id)
+           .one_or_none())
+    if att is None:
+        raise HTTPException(404, "المرفق غير موجود.")
+    from urllib.parse import quote
+    ascii_name = f"attachment-{att.id}.bin"
+    arabic_name = quote(att.file_name)
+    return Response(content=att.data, media_type=att.content_type, headers={
+        "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{arabic_name}",
+    })
+
+
+@scoped.delete("/attachments/{owner_kind}/{owner_id}/{attachment_id}")
+def delete_attachment(company_id: int, owner_kind: str, owner_id: int, attachment_id: int,
+                      record: CompanyUser = Depends(RoleChecker("record")),
+                      db: Session = Depends(get_db)):
+    """حذف مرفق (صلاحية تسجيل العمليات)."""
+    column, _ = _attachment_owner_id(company_id, owner_kind, owner_id, db)
+    att = (db.query(Attachment)
+           .filter(Attachment.company_id == company_id,
+                   getattr(Attachment, column) == owner_id,
+                   Attachment.id == attachment_id)
+           .one_or_none())
+    if att is None:
+        raise HTTPException(404, "المرفق غير موجود.")
+    db.delete(att)
+    db.commit()
+    return {"status": "ok"}
+
+
 @scoped.post("/operations/sale")
 def op_sale(
     company_id: int, amount: Decimal, is_credit: bool = False, method: str = "cash",
@@ -423,7 +552,7 @@ def op_sale(
                                is_credit=is_credit, method=method, customer_id=customer_id,
                                vat_amount=vat_amount, items=items)
         db.commit()
-        return {"invoice_number": invoice.invoice_number, "status": "ok"}
+        return {"invoice_number": invoice.invoice_number, "invoice_id": invoice.id, "status": "ok"}
     except Exception as e:
         _friendly_error(e, db)
 
@@ -481,7 +610,7 @@ def op_purchase(
                                    vat_amount=vat_amount, goes_to_inventory=goes_to_inventory,
                                    items=items)
         db.commit()
-        return {"invoice_number": invoice.invoice_number, "status": "ok"}
+        return {"invoice_number": invoice.invoice_number, "invoice_id": invoice.id, "status": "ok"}
     except Exception as e:
         _friendly_error(e, db)
 

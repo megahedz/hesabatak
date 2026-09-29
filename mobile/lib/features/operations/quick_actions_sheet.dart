@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
+import '../../ui/attachment_field.dart';
 import '../../ui/theme.dart';
 import '../customers/customer_model.dart';
 import '../suppliers/supplier_model.dart';
@@ -81,6 +82,10 @@ class _InvoiceFormState extends State<_InvoiceForm> {
   List<dynamic> _parties = [];
   bool _loadingParties = false;
 
+  // المرفقات: بعد نجاح الحفظ نجمع id الفاتورة ونحوّل النموذج لوضع الإرفاق.
+  int? _savedDocId;
+  String get _savedOwnerKind => _isSale ? 'sale' : 'purchase';
+
   bool get _isSale => widget.kind == _InvoiceKind.sale;
 
   Future<void> _loadPartiesIfNeeded() async {
@@ -111,17 +116,23 @@ class _InvoiceFormState extends State<_InvoiceForm> {
     }
     setState(() => _saving = true);
     try {
+      Map<String, dynamic> res;
       if (_isSale) {
-        await _api.postSale(
+        res = await _api.postSale(
           companyId: AppConfig.companyId, amount: amount, isCredit: _isCredit,
           method: _method, customerId: _isCredit ? _selectedPartyId : null,
         );
       } else {
-        await _api.postPurchase(
+        res = await _api.postPurchase(
           companyId: AppConfig.companyId, amount: amount, isCredit: _isCredit,
           method: _method, supplierId: _isCredit ? _selectedPartyId : null,
           goesToInventory: _goesToInventory,
         );
+      }
+      final savedId = res['invoice_id'] as int?;
+      if (mounted && savedId != null) {
+        setState(() { _savedDocId = savedId; _saving = false; });
+        return; // يبقى النموذج مفتوحًا في وضع الإرفاق
       }
       if (mounted) {
         Navigator.of(context).pop();
@@ -138,6 +149,30 @@ class _InvoiceFormState extends State<_InvoiceForm> {
 
   @override
   Widget build(BuildContext context) {
+    // وضع ما بعد الحفظ: إرفاق صورة/مستند على الفاتورة المحفوظة.
+    if (_savedDocId != null) {
+      return _sheetWrapper(
+        context,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('${widget.title} — تم الحفظ ✓',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.greenDark)),
+            const SizedBox(height: 12),
+            AttachmentField(ownerKind: _savedOwnerKind, ownerId: _savedDocId!),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onDone();
+              },
+              child: const Text('تم'),
+            ),
+          ],
+        ),
+      );
+    }
     return _sheetWrapper(
       context,
       Column(
@@ -236,6 +271,9 @@ class _PartyPaymentFormState extends State<_PartyPaymentForm> {
   List<dynamic> _parties = [];
   bool _loadingParties = true;
 
+  // المرفقات: بعد نجاح الحفظ نجمع id الدفعة ونحوّل النموذج لوضع الإرفاق.
+  int? _savedPaymentId;
+
   bool get _isCustomer => widget.kind == _PaymentKind.fromCustomer;
 
   @override
@@ -270,14 +308,20 @@ class _PartyPaymentFormState extends State<_PartyPaymentForm> {
     }
     setState(() => _saving = true);
     try {
+      Map<String, dynamic> res;
       if (_isCustomer) {
-        await _api.postCustomerPayment(
+        res = await _api.postCustomerPayment(
           companyId: AppConfig.companyId, amount: amount, customerId: _selectedPartyId!, method: _method,
         );
       } else {
-        await _api.postSupplierPayment(
+        res = await _api.postSupplierPayment(
           companyId: AppConfig.companyId, amount: amount, supplierId: _selectedPartyId!, method: _method,
         );
+      }
+      final savedId = res['payment_id'] as int?;
+      if (mounted && savedId != null) {
+        setState(() { _savedPaymentId = savedId; _saving = false; });
+        return; // يبقى النموذج مفتوحًا في وضع الإرفاق
       }
       if (mounted) {
         Navigator.of(context).pop();
@@ -294,6 +338,30 @@ class _PartyPaymentFormState extends State<_PartyPaymentForm> {
 
   @override
   Widget build(BuildContext context) {
+    // وضع ما بعد الحفظ: إرفاق صورة/مستند على سند القبض/الدفع.
+    if (_savedPaymentId != null) {
+      return _sheetWrapper(
+        context,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('${widget.title} — تم الحفظ ✓',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.greenDark)),
+            const SizedBox(height: 12),
+            AttachmentField(ownerKind: 'payment', ownerId: _savedPaymentId!),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onDone();
+              },
+              child: const Text('تم'),
+            ),
+          ],
+        ),
+      );
+    }
     return _sheetWrapper(
       context,
       Column(

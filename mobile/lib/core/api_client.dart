@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'local_store.dart';
 import 'session.dart';
 import 'sync_manager.dart';
@@ -50,15 +51,48 @@ class ApiClient {
   /// Login uses OAuth2's standard form-body shape (spec: JWT auth), not
   /// query params like the rest of the API, because FastAPI's
   /// OAuth2PasswordRequestForm expects application/x-www-form-urlencoded.
+  ///
+  /// تسجيل الدخول/التسجيل يحتاج مهلة أطول من باقي الطلبات: على الخطة المجانية
+  /// من Render قد يستيقظ السيرفر أثناء الطلب نفسه (حتى ~45 ثانية)، فنفصل
+  /// مهلة حرة لا تُقطع الإعادة الصامتة عندها.
   Future<Map<String, dynamic>> login({required String phone, required String password}) async {
     final res = await _send(
       () => http.post(
         Uri.parse('$baseUrl/auth/login'),
         body: {'username': phone, 'password': password},
-      ),
+      ).timeout(const Duration(seconds: 90)),
     );
     _checkOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Register: same long-timeout treatment as [login] — the server may be
+  /// waking up from Render free tier's cold start during the request itself.
+  Future<Map<String, dynamic>> registerLong({
+    required String fullName,
+    required String phone,
+    required String email,
+    required String password,
+  }) async {
+    final res = await _send(
+      () => http.post(
+        Uri.parse('$baseUrl/auth/register').replace(queryParameters: {
+          'full_name': fullName,
+          'phone': phone,
+          'email': email,
+          'password': password,
+        }),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 90)),
+    );
+    _checkOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Fire-and-forget wake-up ping: يُطلق فور فتح التطبيق ليوقظ السيرفر النائم
+  /// أثناء ما المستخدم يكتب بياناته — أول طلب فعلي يجده مستيقظًا.
+  static void warmUpServer(String baseUrl) {
+    http.get(Uri.parse('$baseUrl/health')).timeout(const Duration(seconds: 75)).catchError((_) {});
   }
 
   // ---------------------------------------------------------------- companies
@@ -432,6 +466,64 @@ class ApiClient {
     if (res.statusCode == 401) AppSession.instance.logout();
     if (res.statusCode >= 400) throw ApiException(res.statusCode, res.body);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  // ---------------------------------------------------------------- attachments (المرفقات)
+  /// رفع مرفق (صورة/PDF) على عميل/مورد/فاتورة بيع/فاتورة شراء/دفعة.
+  /// [ownerKind] أحد: customer, supplier, sale, purchase, payment.
+  Future<Map<String, dynamic>> uploadAttachment({
+    required String ownerKind,
+    required int ownerId,
+    required List<int> bytes,
+    required String fileName,
+    required String contentType,
+  }) async {
+    final cid = AppSession.instance.companyId;
+    final uri = Uri.parse('$baseUrl/companies/$cid/attachments/$ownerKind/$ownerId');
+    final req = http.MultipartRequest('POST', uri)
+      ..headers.addAll(_headers)
+      ..files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: fileName, contentType: MediaType.parse(contentType)));
+    final streamed = await req.send().timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+    _checkOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// قائمة مرفقات مستند معين (بدون محتوى الملف).
+  Future<List<dynamic>> listAttachments(String ownerKind, int ownerId) async {
+    final cid = AppSession.instance.companyId;
+    final res = await _get('/companies/$cid/attachments/$ownerKind/$ownerId');
+    return res as List<dynamic>;
+  }
+
+  /// تنزيل محتوى مرفق واحد (الملف الأصلي).
+  Future<BackupFile> downloadAttachment(String ownerKind, int ownerId, int attachmentId) async {
+    final cid = AppSession.instance.companyId;
+    final res = await _send(() => http.get(
+          Uri.parse('$baseUrl/companies/$cid/attachments/$ownerKind/$ownerId/$attachmentId'),
+          headers: _headers,
+        ));
+    _checkOk(res);
+    String name = 'attachment-$attachmentId';
+    final disposition = res.headers['content-disposition'];
+    if (disposition != null) {
+      final star = RegExp(r"filename\*=UTF-8''([^;]+)").firstMatch(disposition);
+      if (star != null) {
+        name = Uri.decodeComponent(star.group(1)!);
+      }
+    }
+    return BackupFile(bytes: res.bodyBytes, fileName: name);
+  }
+
+  /// حذف مرفق.
+  Future<void> deleteAttachment(String ownerKind, int ownerId, int attachmentId) async {
+    final cid = AppSession.instance.companyId;
+    final res = await _send(() => http.delete(
+          Uri.parse('$baseUrl/companies/$cid/attachments/$ownerKind/$ownerId/$attachmentId'),
+          headers: _headers,
+        ));
+    _checkOk(res);
   }
 
   // ---------------------------------------------------------------- internals

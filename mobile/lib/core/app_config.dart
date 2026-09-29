@@ -14,7 +14,7 @@ class AppConfig {
 
   /// إصدار الواجهة (يظهر في الإعدادات) — للتحقق بسرعة من أن الجهاز يعمل
   /// على آخر بناء APK بعد التحديثات.
-  static const String appVersion = '0.7.6';
+  static const String appVersion = '0.7.7';
 
   /// The company every screen operates on. Delegates to AppSession, which
   /// is set once after login — no screen needs to change now that auth
