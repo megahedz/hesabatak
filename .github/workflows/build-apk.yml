@@ -106,6 +106,8 @@ jobs:
   # ========================================================================
   web:
     runs-on: ubuntu-latest
+    outputs:
+      pages_enabled: ${{ steps.pages_check.outputs.enabled }}
     steps:
       - uses: actions/checkout@v4
 
@@ -128,18 +130,39 @@ jobs:
           flutter build web --release --base-href /hesabatak/
           --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://hesabatak-backend-srps.onrender.com' }}
 
-      - name: Setup Pages (auto-enables Pages on the repo)
-        uses: actions/configure-pages@v5
+      # تفعيل Pages يتطلب نقرة يدوية واحدة من مالك المستودع (صلاحية غير
+      # متاحة لتوكن الـ Actions): Settings → Pages → Source = GitHub Actions.
+      # حتى تفعيلها: النشر يتخطى بلطف والبناء يرفع كـ artifact عادي.
+      - name: Check if GitHub Pages is enabled
+        id: pages_check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api repos/${{ github.repository }}/pages >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo '::notice::GitHub Pages غير مفعّل بعد — فعّله مرة واحدة من Settings → Pages (Source = GitHub Actions) وسينشر البناء تلقائيًا بعدها.'
+          fi
+
+      - name: Upload web build artifact (for manual hosting)
+        uses: actions/upload-artifact@v4
         with:
-          enablement: true
+          name: hesabatak-web
+          path: mobile/build/web
+
+      - name: Setup Pages
+        if: steps.pages_check.outputs.enabled == 'true'
+        uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: steps.pages_check.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: mobile/build/web
 
   deploy-web:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.web.outputs.pages_enabled == 'true'
     needs: web
     runs-on: ubuntu-latest
     environment:
