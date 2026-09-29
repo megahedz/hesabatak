@@ -40,6 +40,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _load();
+    // بعد أي عملية سريعة من البار السفلي: أعد تحميل الأرقام فورًا.
+    HomeShell.onSectionRefresh = (_) => _reload();
   }
 
   void _load() {
@@ -279,16 +281,17 @@ class _QuickActionsGrid extends StatelessWidget {
   const _QuickActionsGrid({required this.onDone});
   final VoidCallback onDone;
 
-  static const _actions = [
-    ('بيع', Icons.point_of_sale),
-    ('شراء', Icons.shopping_cart_outlined),
-    ('قبض من عميل', Icons.arrow_downward),
-    ('دفع لمورد', Icons.arrow_upward),
-    ('مصروف', Icons.receipt_long_outlined),
-    ('إيداع رأس مال', Icons.add_business_outlined),
-    ('سحب شخصي', Icons.person_outline),
-    ('تحويل بين الحسابات', Icons.swap_horiz),
-  ];
+  // لون مميز لكل عملية — تمايز بصري أسرع من لون موحد.
+  static const _actions = <(String, IconData, Color, Color)>([
+    ('بيع', Icons.point_of_sale_rounded, AppColors.greenTint, AppColors.green),
+    ('شراء', Icons.shopping_cart_rounded, AppColors.blueTint, AppColors.primary),
+    ('قبض من عميل', Icons.north_rounded, AppColors.tealTint, AppColors.teal),
+    ('دفع لمورد', Icons.south_rounded, AppColors.amberTint, AppColors.amber),
+    ('مصروف', Icons.receipt_long_rounded, AppColors.redTint, AppColors.red),
+    ('إيداع رأس مال', Icons.add_business_rounded, AppColors.purpleTint, AppColors.purple),
+    ('سحب شخصي', Icons.person_remove_rounded, AppColors.greyTint, AppColors.navy),
+    ('تحويل بين الحسابات', Icons.swap_horiz_rounded, AppColors.blueTint, AppColors.primary),
+  ]);
 
   @override
   Widget build(BuildContext context) {
@@ -300,7 +303,7 @@ class _QuickActionsGrid extends StatelessWidget {
       mainAxisSpacing: 12,
       childAspectRatio: 0.85,
       children: _actions.map((a) {
-        final (label, icon) = a;
+        final (label, icon, bg, fg) = a;
         return InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () => showQuickActionSheet(context, action: label, onDone: onDone),
@@ -309,9 +312,9 @@ class _QuickActionsGrid extends StatelessWidget {
             children: [
               IconTile(
                 icon: icon,
-                background: AppColors.blueTint,
-                color: AppColors.primary,
-                size: 44,
+                background: bg,
+                color: fg,
+                size: 46,
               ),
               const SizedBox(height: 6),
               Text(label,
