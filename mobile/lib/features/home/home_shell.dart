@@ -237,7 +237,9 @@ class _QuickBar extends StatelessWidget {
     ('مصروف', Icons.receipt_long_rounded, AppColors.red),
     ('سداد', Icons.south_rounded, AppColors.amber),
     ('استلام', Icons.north_rounded, AppColors.teal),
-  ]); /// اسم العملية في showQuickActionSheet لكل زر.
+  ]);
+
+  /// اسم العملية في showQuickActionSheet لكل زر.
   static const _actionNames = ['بيع', 'شراء', 'مصروف', 'قبض من عميل', 'دفع لمورد'];
 
   @override
