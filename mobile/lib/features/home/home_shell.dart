@@ -13,6 +13,7 @@ import '../inventory/inventory_screen.dart';
 import '../treasury/treasury_screen.dart';
 import '../assets/fixed_assets_screen.dart';
 import '../reports/reports_screen.dart';
+import '../billing/subscription_screen.dart';
 import '../settings/settings_screen.dart';
 
 /// الأقسام الرئيسية الـ 11 (كالتصميم المرجعي تمامًا) — تُعرض في القائمة
@@ -35,6 +36,7 @@ class HomeShell extends StatefulWidget {
     ('الخزنة والبنك', Icons.savings_rounded),
     ('الأصول الثابتة', Icons.domain_rounded),
     ('التقارير', Icons.bar_chart_rounded),
+    ('الاشتراك', Icons.workspace_premium_rounded),
     ('الإعدادات', Icons.settings_rounded),
   ];
 
@@ -87,6 +89,8 @@ class _HomeShellState extends State<HomeShell> {
         return const FixedAssetsScreen();
       case 'التقارير':
         return const ReportsScreen();
+      case 'الاشتراك':
+        return const SubscriptionScreen();
       case 'الإعدادات':
         return const SettingsScreen();
       default:

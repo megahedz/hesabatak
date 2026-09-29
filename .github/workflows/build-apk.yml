@@ -43,6 +43,23 @@ jobs:
             echo "Icon not configured, skipping"
           fi
 
+      # Google Sign-In (توقيع SHA-1 مطلوب في Google Cloud Console):
+      # 1) حرّر المفاتيح من GitHub: Settings → Secrets → GOOGLE_SERVICES_JSON
+      # 2) من Google Cloud Console (APIs & Services → Credentials):
+      #    - أنشئ OAuth 2.0 Client ID نوع Android، مع:
+      #      package name = com.hesabatak.hesabatak
+      #      SHA-1 = بصمة مفتاح التوقيع (من keystore أو من Play App Signing)
+      #    - فعّل Google Sign-In API (أو خدمات Play الأساسية)
+      # 3) أضف WEB_CLIENT_ID (نوع Web Application) كـ repository secret،
+      #    يُمرَّر للتطبيق عبر --dart-define=GOOGLE_WEB_CLIENT_ID=...
+      # 4) ضع google-services.json في GOOGLE_SERVICES_JSON secret وألصقه هنا:
+      #    echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > mobile/android/app/google-services.json
+      # (الخطوات 1-4 لا تمنع البناء الآن؛ زر جوجل يعرض رسالة إعداد حتى تكتمل)
+
+      # - name: Restore google-services.json
+      #   working-directory: mobile
+      #   run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
+
       - name: Patch AndroidManifest (app name + internet permission)
         working-directory: mobile
         # flutter create regenerates the manifest fresh every run, so these
@@ -60,8 +77,19 @@ jobs:
           flutter build apk --release
           --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://hesabatak-backend-srps.onrender.com' }}
 
+      # اسم الملف النهائي يحمل اسم البرنامج ورقم الإصدار، مثل:
+      # hesabatak-0.7.4.apk — مباشرة من pubspec.yaml (version: 0.7.4+11)
+      - name: Rename APK with app name + version
+        working-directory: mobile
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
+          OUT=build/app/outputs/flutter-apk
+          mv "$OUT/app-release.apk" "$OUT/hesabatak-$VERSION.apk"
+          echo "hesabatak-$VERSION.apk"
+          ls -la "$OUT"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: hesabatak-app
-          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          path: mobile/build/app/outputs/flutter-apk/hesabatak-*.apk

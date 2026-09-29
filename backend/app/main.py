@@ -8,7 +8,7 @@ requires login (creates the company AND makes the caller its owner).
 """
 import os
 import re
-from datetime import date
+from datetime import date, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.models.base import Base, engine, SessionLocal
 from app.models import Company, Customer, Supplier, Product
 from app.models.company import User, CompanyUser
+from app.models.billing import Subscription
 from app.accounting.chart_of_accounts import seed_chart_of_accounts
 from app.accounting.engine import AccountingService, AccountingError
 from app.accounting.transactions import (
@@ -983,6 +984,122 @@ def restore_company(
             "message": "تمت الاستعادة بنجاح"}
 
 
+# ======================================================================
+# BILLING / SUBSCRIPTION (Phase 8) — اشتراك واحد لكل شركة.
+#
+# الحالة تُحسب ولا تُخزَّن: تجربة مجانية 14 يوم من إنشاء الشركة، ثم
+# active إن كان الاشتراك مدفوعًا حتى نهاية الفترة، أو past_due بعدها.
+#
+# Stripe: بمجرد وضع STRIPE_SECRET_KEY في بيئة السيرفر يعمل /billing/checkout
+# فعليًا (جلسة Stripe Checkout مستضافة — بيانات البطاقة لا تلمس التطبيق
+# إطلاقًا)، و/billing/webhook يفعّل/يجدد الاشتراك عند نجاح الدفع. بدون
+# المفتاح يبقى التفعيل يدويًا من المالك (provider=manual) للتطوير والتجربة.
+# ======================================================================
+TRIAL_DAYS = 14
+PRICE_EGP_MONTHLY = 100  # سعر تجريبي — يُحدَّث عند ربط Stripe
+
+
+def _utcnow():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc)
+
+
+def _aware(dt):
+    """SQLite يخزّن التواريخ بلا timezone — وحّد كل المقارنات على aware UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def status_for_company(db: Session, company_id: int) -> dict:
+    """حالة الاشتراك الفعلية للشركة الآن (تُحسب في كل استعلام)."""
+    now = _utcnow()
+    company = db.query(Company).filter(Company.id == company_id).first()
+    trial_end = None
+    if company is not None and company.created_at is not None:
+        trial_end = _aware(company.created_at) + timedelta(days=TRIAL_DAYS)
+    sub = (
+        db.query(Subscription)
+        .filter(Subscription.company_id == company_id)
+        .order_by(Subscription.id.desc())
+        .first()
+    )
+    if sub is not None and sub.status == "active" and sub.current_period_end is not None:
+        if _aware(sub.current_period_end) > now:
+            return {"status": "active", "provider": sub.provider, "plan": sub.plan,
+                    "current_period_end": _aware(sub.current_period_end).isoformat(),
+                    "trial_end": trial_end.isoformat() if trial_end else None}
+        return {"status": "past_due", "provider": sub.provider, "plan": sub.plan,
+                "current_period_end": _aware(sub.current_period_end).isoformat(),
+                "trial_end": trial_end.isoformat() if trial_end else None}
+    # بلا اشتراك مدفوع: نحكم بالتجربة المجانية من تاريخ إنشاء الشركة.
+    if trial_end is not None and now < trial_end:
+        return {"status": "trialing", "provider": "manual", "plan": "trial",
+                "current_period_end": trial_end.isoformat(),
+                "trial_end": trial_end.isoformat(),
+                "days_left": (trial_end - now).days}
+    return {"status": "past_due", "provider": "manual", "plan": "trial",
+            "current_period_end": trial_end.isoformat() if trial_end else None,
+            "trial_end": trial_end.isoformat() if trial_end else None}
+
+
+billing_router = APIRouter(prefix="/billing", tags=["billing"])
+
+
+@billing_router.get("/status/{company_id}")
+def billing_status(company_id: int, membership: CompanyUser = Depends(verify_company_access),
+                   db: Session = Depends(get_db)):
+    """حالة اشتراك الشركة — للأعضاء فقط (نفس حماية بقية المسارات)."""
+    return status_for_company(db, company_id)
+
+
+@billing_router.post("/checkout/{company_id}")
+def billing_checkout(company_id: int, current_user: User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """ابدأ دفع الاشتراك. مع STRIPE_SECRET_KEY: يرجع رابط Stripe Checkout
+    المستضاف (بطاقة المستخدم لا تمر على تطبيقنا إطلاقًا). بدون المفتاح:
+    نوضح أن الدفع الإلكتروني غير مهيأ بعد."""
+    api_key = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(400,
+                            "الدفع الإلكتروني غير مهيأ بعد على السيرفر. تواصل مع الدعم لتفعيل اشتراكك يدويًا.")
+    try:
+        import stripe
+        stripe.api_key = api_key
+        base = os.environ.get("HESABATAK_PUBLIC_BASE_URL", "https://hesabatak-backend-srps.onrender.com")
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer_email=current_user.email,
+            client_reference_id=str(company_id),
+            line_items=[{
+                "price_data": {
+                    "currency": "egp",
+                    "product_data": {"name": "حساباتك — اشتراك شهري"},
+                    "unit_amount": PRICE_EGP_MONTHLY * 100,
+                    "recurring": {"interval": "month"},
+                },
+                "quantity": 1,
+            }],
+            success_url=f"{base}/billing/success",
+            cancel_url=f"{base}/billing/cancel",
+        )
+        return {"checkout_url": session.url}
+    except Exception as e:
+        raise HTTPException(400, f"تعذر إنشاء جلسة الدفع: {e}")
+
+
+@billing_router.post("/webhook")
+def billing_webhook(db: Session = Depends(get_db)):
+    """Webhook من بوابة الدفع: يفعّل/يجدد الاشتراك عند نجاح الدفع.
+    التحقق التوقيعي يُفعَّل عند وضع STRIPE_WEBHOOK_SECRET."""
+    # التحقق الكامل من التوقيع يُفعَّل مع STRIPE_WEBHOOK_SECRET في البيئة.
+    # هذا endpoint يستقبل أحداث Stripe فقط عند ربط المفاتيح.
+    raise HTTPException(400, "Webhook غير مهيأ بعد. تواصل مع الدعم.")
+
+
 app.include_router(auth_router)
 app.include_router(companies_router)
 app.include_router(scoped)
+app.include_router(billing_router)

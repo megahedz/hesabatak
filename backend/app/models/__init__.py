@@ -10,3 +10,4 @@ from .documents import (
     ExpenseCategory, Expense,
 )
 from .misc import AuditLog, AppSetting
+from .billing import Subscription

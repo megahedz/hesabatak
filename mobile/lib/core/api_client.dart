@@ -71,6 +71,18 @@ class ApiClient {
     return _post('/companies', {'name': name, 'business_type': businessType}, useQueryParams: true);
   }
 
+  // ---------------------------------------------------------------- billing (Phase 8)
+  /// حالة اشتراك الشركة: trialing / active / past_due + تواريخ الانتهاء.
+  Future<Map<String, dynamic>> getBillingStatus(int companyId) async {
+    return (await _get('/billing/status/$companyId', cacheKey: 'billing')) as Map<String, dynamic>;
+  }
+
+  /// طلب رابط دفع الاشتراك (Stripe Checkout مستضاف). بدون مفاتيح الدفع على
+  /// السيرفر يرجع 400 برسالة عربية واضحة تعرض كما هي.
+  Future<Map<String, dynamic>> startCheckout(int companyId) {
+    return _post('/billing/checkout/$companyId', {}, useQueryParams: true);
+  }
+
   // ---------------------------------------------------------------- dashboard
   Future<Map<String, dynamic>> getDashboard(int companyId, {DateTime? periodStart}) async {
     final q = periodStart != null ? '?start=${periodStart.toIso8601String().substring(0, 10)}' : '';

@@ -208,6 +208,26 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// الدخول بجوجل: الربط مع السيرفر (OAuth) لم يكتمل بعد — نوضح للمستخدم
+  /// ماذا سيتاح قريبًا بدل زر صامت لا يفعل شيئًا.
+  void _showGooglePendingInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('الدخول بحساب Google'),
+          content: const Text(
+            'تسجيل الدخول بجوجل قيد التهيئة على السيرفر وسيصاح قريبًا.\n\n'
+            'حتى ذلك الحين: سجّل ببريدك ورقم هاتفك وكلمة مرور — كلمة المرور محفوظة مشفرة (bcrypt) ولا يستطيع أحد قراءتها.',
+          ),
+          actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('حسنًا'))],
+        ),
+      ),
+    );
+  }
+
   /// «نسيت كلمة المرور؟» — لا يوجد بعد endpoint لاستعادة كلمة المرور، فنشرح
   /// ذلك بصراحة بدل الزر المضلل الذي كان يبدّل لوضع التسجيل فقط.
   void _showForgotPasswordDialog() {
@@ -262,7 +282,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text('إدارة أعمالك بسهولة',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 6),
+                    // طمأنة صريحة: كلمة المرور مشفرة دائمًا على السيرفر.
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.lock_outline, size: 13, color: AppColors.green),
+                        SizedBox(width: 4),
+                        Text('كلمة المرور محفوظة مشفرة (bcrypt)',
+                            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
                     SectionCard(
                       padding: const EdgeInsets.all(20),
                       child: Column(
@@ -434,6 +465,32 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: TextStyle(color: AppColors.textSecondary)),
                             ),
                           ],
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Expanded(child: Divider()),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                child: Text('أو',
+                                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                              ),
+                              const Expanded(child: Divider()),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          // الدخول بجوجل: يتطلب ربط حساب جوجل بحسابك على
+                          // السيرفر (OAuth) — التهيئة موثقة في CI؛ حتى اكتمال
+                          // الربط يظهر تنبيه واضح بدل الفشل الصامت.
+                          OutlinedButton.icon(
+                            onPressed: _loading ? null : _showGooglePendingInfo,
+                            icon: const Icon(Icons.g_mobiledata, size: 26),
+                            label: const Text('المتابعة بحساب Google'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.navy,
+                              side: const BorderSide(color: AppColors.greyTint),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
                         ],
                       ),
                     ),
