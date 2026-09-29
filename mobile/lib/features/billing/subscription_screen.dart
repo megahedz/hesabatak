@@ -27,6 +27,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _paying = false;
   String? _error;
 
+  /// companyId يُضبط بعد الدخول دائمًا؛ احتياطًا نتعامل مع null بأمان.
+  int get _companyId => AppSession.instance.companyId ?? -1;
+
   @override
   void initState() {
     super.initState();
@@ -36,7 +39,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final s = await _api.getBillingStatus(AppSession.instance.companyId);
+      final s = await _api.getBillingStatus(_companyId);
       if (mounted) setState(() { _status = s; _error = null; });
     } on ApiException catch (e) {
       if (mounted) {
@@ -56,7 +59,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Future<void> _subscribe() async {
     setState(() { _paying = true; _error = null; });
     try {
-      final res = await _api.startCheckout(AppSession.instance.companyId);
+      final res = await _api.startCheckout(_companyId);
       final url = res['checkout_url'] as String?;
       if (url == null || url.isEmpty) {
         setState(() => _error = 'لم يصل رابط الدفع من السيرفر. حاول مرة أخرى.');
