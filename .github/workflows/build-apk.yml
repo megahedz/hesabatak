@@ -128,8 +128,10 @@ jobs:
           flutter build web --release --base-href /hesabatak/
           --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://hesabatak-backend-srps.onrender.com' }}
 
-      - name: Setup Pages
+      - name: Setup Pages (auto-enables Pages on the repo)
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
