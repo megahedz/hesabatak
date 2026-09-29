@@ -39,13 +39,6 @@ class HomeShell extends StatefulWidget {
     ('الإعدادات', Icons.settings_rounded),
   ];
 
-  @override
-  State<HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends State<HomeShell> {
-  String _current = 'الرئيسية';
-
   /// يطلقه البار السفلي بعد نجاح أي عملية سريعة حتى تعيد الشاشة الظاهرة
   /// تحميل بياناتها فورًا (إشارة يلتقطها الداشبورد).
   static ValueChanged<String>? onSectionRefresh;
@@ -54,6 +47,13 @@ class _HomeShellState extends State<HomeShell> {
     final cb = onSectionRefresh;
     if (cb != null) cb('refresh');
   }
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  String _current = 'الرئيسية';
 
   @override
   void initState() {
