@@ -309,7 +309,8 @@ class _TrialBalanceTab extends StatelessWidget {
   const _TrialBalanceTab({required this.api});
   final ApiClient api;
 
-  static const _fmt = NumberFormat('#,##0.##', 'en');
+  // NumberFormat ليس const-able — final بدل const.
+  static final NumberFormat _fmt = NumberFormat('#,##0.##', 'en');
 
   @override
   Widget build(BuildContext context) {

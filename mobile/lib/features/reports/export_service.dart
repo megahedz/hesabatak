@@ -1,9 +1,12 @@
 import 'dart:io' as io show File;
+import 'dart:js_interop';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:web/web.dart' as web;
 
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
@@ -24,12 +27,8 @@ Future<bool> shareReportExport(BuildContext context, String reportKey) async {
     final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
     final file = await api.downloadExport(reportKey: reportKey, fmt: format);
     if (kIsWeb) {
-      // المتصفح: تنزيل مباشر بدون شير النظام (لا ملفات مؤقتة هناك).
-      await SharePlus.instance.share(
-        ShareParams(files: [XFile.fromData(file.bytes, name: file.fileName)],
-            text: 'تقرير حساباتك'),
-      );
-      return true;
+      // المتصفح: تنزيل مباشر عبر Blob (شير النظام غير موجود هناك).
+      return _shareOnWeb(file.bytes, file.fileName);
     }
     final path = await _writeTemp(file.bytes, file.fileName);
     await SharePlus.instance.share(
@@ -81,7 +80,8 @@ Future<bool> shareBackupFile(BuildContext context, List<int> bytes, String fileN
 /// تنزيل الملف مباشرة في المتصفح عبر Blob + رابط مؤقت (يُستخدم على الويب فقط).
 Future<bool> _shareOnWeb(List<int> bytes, String fileName) async {
   try {
-    final blob = web.Blob([bytes.toJS].toJS);
+    final data = Uint8List.fromList(bytes);
+    final blob = web.Blob([data.toJS].toJS);
     final url = web.URL.createObjectURL(blob);
     final anchor = web.HTMLAnchorElement()
       ..href = url

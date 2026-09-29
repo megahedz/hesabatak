@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
-import '../../core/api_client.dart';
-import '../../core/app_config.dart';
-import '../reports/export_service.dart';
-import '../theme.dart';
+import '../core/api_client.dart';
+import '../core/app_config.dart';
+import '../features/reports/export_service.dart';
+import 'theme.dart';
 
 /// صف مرفقات جاهز للإدراج في أي نموذج إدخال (عميل/مورد/بيع/شراء/قبض/دفع):
 /// زر «إرفاق صورة أو مستند» + قائمة المرفقات المرفوعة مع فتح/حذف.
