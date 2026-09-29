@@ -1,20 +1,14 @@
-import 'dart:io' as io show File;
-import 'dart:js_interop';
-import 'dart:typed_data';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:web/web.dart' as web;
 
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
+import 'share_downloader.dart';
 
 /// Phase 6 (spec §39/§40): download a report as PDF/Excel from the backend
-/// and hand it to the Android share sheet (WhatsApp, email, drive, "save to
-/// Files"...). Returns false when the download fails so the caller can show
-/// its own Arabic error.
+/// and hand it to the platform — Android share sheet on mobile, direct
+/// browser download on web. Returns false when the download fails so the
+/// caller can show its own Arabic error.
 Future<bool> shareReportExport(BuildContext context, String reportKey) async {
   final messenger = ScaffoldMessenger.of(context);
   final format = await _pickFormat(context);
@@ -26,15 +20,12 @@ Future<bool> shareReportExport(BuildContext context, String reportKey) async {
   try {
     final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
     final file = await api.downloadExport(reportKey: reportKey, fmt: format);
-    if (kIsWeb) {
-      // المتصفح: تنزيل مباشر عبر Blob (شير النظام غير موجود هناك).
-      return _shareOnWeb(file.bytes, file.fileName);
+    final ok = await shareBytes(file.bytes, file.fileName, 'تقرير حساباتك');
+    if (!ok && context.mounted) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('تعذر مشاركة الملف. حاول مرة أخرى.')));
     }
-    final path = await _writeTemp(file.bytes, file.fileName);
-    await SharePlus.instance.share(
-      ShareParams(files: [XFile(path)], text: 'تقرير حساباتك'),
-    );
-    return true;
+    return ok;
   } on ApiException catch (e) {
     messenger.showSnackBar(SnackBar(
       content: Text(e.statusCode == 400
@@ -49,60 +40,14 @@ Future<bool> shareReportExport(BuildContext context, String reportKey) async {
   }
 }
 
-/// مشاركة ملف عام (يُستخدم لفتح/تنزيل المرفقات وكشوف الحساب). يستخدم نفس
-/// مسار الكتابة المؤقتة + شير النظام.
+/// مشاركة ملف عام (يُستخدم لفتح/تنزيل المرفقات والنسخ الاحتياطية) — يعمل على
+/// الموبايل (شير النظام) وعلى الويب (تنزيل مباشر).
 Future<bool> shareFile(BuildContext context, List<int> bytes, String fileName) async {
-  if (kIsWeb) {
-    // المتصفح: تنزيل مباشر عبر Blob (share sheet غير موجود على الويب).
-    return _shareOnWeb(bytes, fileName);
-  }
-  return shareBackupFile(context, bytes, fileName);
+  return shareBytes(bytes, fileName, 'ملف من حساباتك');
 }
 
 Future<bool> shareBackupFile(BuildContext context, List<int> bytes, String fileName) async {
-  if (kIsWeb) {
-    return _shareOnWeb(bytes, fileName);
-  }
-  final messenger = ScaffoldMessenger.of(context);
-  try {
-    final path = await _writeTemp(bytes, fileName);
-    await SharePlus.instance.share(
-      ShareParams(files: [XFile(path)], text: 'نسخة احتياطية من حساباتك'),
-    );
-    return true;
-  } catch (_) {
-    messenger.showSnackBar(
-        const SnackBar(content: Text('تعذر مشاركة الملف. حاول مرة أخرى.')));
-    return false;
-  }
-}
-
-/// تنزيل الملف مباشرة في المتصفح عبر Blob + رابط مؤقت (يُستخدم على الويب فقط).
-Future<bool> _shareOnWeb(List<int> bytes, String fileName) async {
-  try {
-    final data = Uint8List.fromList(bytes);
-    final blob = web.Blob([data.toJS].toJS);
-    final url = web.URL.createObjectURL(blob);
-    final anchor = web.HTMLAnchorElement()
-      ..href = url
-      ..download = fileName;
-    anchor.click();
-    web.URL.revokeObjectURL(url);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-Future<String> _writeTemp(List<int> bytes, String fileName) async {
-  if (kIsWeb) {
-    // المتصفح: يكفي اسم الملف — مشاركة الملف نفسه تتم عبر XFile.fromData.
-    return fileName;
-  }
-  final dir = await getTemporaryDirectory();
-  final file = io.File('${dir.path}/$fileName');
-  await file.writeAsBytes(bytes, flush: true);
-  return file.path;
+  return shareBytes(bytes, fileName, 'نسخة احتياطية من حساباتك');
 }
 
 Future<String?> _pickFormat(BuildContext context) async {
