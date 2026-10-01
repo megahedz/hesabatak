@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Enum, Date
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Enum, Date, Text
 from .base import Base, TimestampMixin, CompanyScopedMixin
 
 
@@ -18,6 +18,7 @@ class Product(Base, TimestampMixin, CompanyScopedMixin):
     barcode = Column(String(50), nullable=True)
     category_id = Column(Integer, ForeignKey("product_categories.id"), nullable=True)
     unit = Column(String(30), nullable=False, default="قطعة")
+    description = Column(Text, nullable=True)  # وصف حر للصنف (يظهر في الكتالوج ويتعبّى في بنود الفاتورة)
     purchase_price = Column(Numeric(18, 2), nullable=False, default=0)  # last/avg cost, used for weighted-average COGS
     selling_price = Column(Numeric(18, 2), nullable=False, default=0)
     current_stock = Column(Numeric(18, 3), nullable=False, default=0)

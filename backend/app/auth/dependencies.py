@@ -64,11 +64,14 @@ def verify_company_access(
 
 # ----------------------------------------------------------------- roles (Phase 7)
 # What each role may do, in plain Arabic the UI can also display.
+# "data_entry" (مسجل بيانات): يسجّل العمليات فقط — لا يرى التقارير المالية
+# ولا يصدّر ولا ينسخ احتياطيًا؛ أنشأه صاحب الشركة ليكتب يومية البيع/الشراء فقط.
 ROLE_PERMISSIONS = {
     "owner": {
         "view", "record", "manage_team", "manage_settings", "export", "backup",
     },
     "accountant": {"view", "record", "export", "backup"},
+    "data_entry": {"record"},
     "staff": {"view"},
 }
 

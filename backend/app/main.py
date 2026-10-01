@@ -22,8 +22,11 @@ from app.models.attachments import (
     Attachment, MAX_ATTACHMENT_BYTES, ALLOWED_CONTENT_TYPES,
 )
 from app.models.documents import SalesInvoice, PurchaseInvoice, Payment
+from app.models.operations import (
+    FinancialYear, FixedAsset, BankAccount, CashTransaction, BankTransaction,
+)
 
-from app.models.base import Base, engine, SessionLocal
+from app.models.base import Base, engine, SessionLocal, IS_POSTGRES
 from app.models import Company, Customer, Supplier, Product
 from app.models.company import User, CompanyUser
 from app.accounting.chart_of_accounts import seed_chart_of_accounts
@@ -37,7 +40,10 @@ from app.accounting.reports import (
     trial_balance, profit_and_loss, balance_sheet, party_ledger_balance,
     general_ledger, cash_flow, vat_report,
 )
-from app.accounting.detailed_reports import sales_report, purchases_report, inventory_report, expense_report
+from app.accounting.detailed_reports import (
+    sales_report, purchases_report, inventory_report, expense_report,
+    sales_by_item, purchases_by_item,
+)
 from app.accounting.dashboard_stats import monthly_sales_series, period_purchases
 from app.accounting.exports import (
     build_pdf, build_xlsx, EXPORTS, ExportError,
@@ -75,6 +81,23 @@ def health():
 
 @app.on_event("startup")
 def on_startup():
+    # ARCHITECTURE (mandatory): production must run on cloud PostgreSQL.
+    # The Render deployment sets HESABATAK_REQUIRE_POSTGRES=1 — the server
+    # then REFUSES to boot on SQLite, so the "ephemeral disk" failure mode
+    # (all accounting data lost on every redeploy) can never happen again.
+    if os.environ.get("HESABATAK_REQUIRE_POSTGRES") == "1" and not IS_POSTGRES:
+        raise RuntimeError(
+            "DATABASE_URL must point to a cloud PostgreSQL database in production "
+            "(postgresql://...). SQLite is not allowed as the source of truth."
+        )
+    from sqlalchemy import text
+    if IS_POSTGRES:
+        # Fail fast with a clear message if the cloud DB is unreachable.
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception as e:
+            raise RuntimeError(f"Cannot reach the PostgreSQL database (DATABASE_URL): {e}")
     Base.metadata.create_all(bind=engine)
     # spec §78: never run with the placeholder secret except in explicit dev mode.
     if SECRET_KEY == "dev-only-insecure-key-change-me" and not os.environ.get("HESABATAK_ALLOW_DEV_SECRET"):
@@ -151,8 +174,38 @@ def create_company(name: str, business_type: str = "عام", current_user: User 
     db.flush()
     seed_chart_of_accounts(db, company.id)
     db.add(CompanyUser(company_id=company.id, user_id=current_user.id, role="owner"))
+    _ensure_current_financial_year(db, company.id)
     db.commit()
     return {"id": company.id, "name": company.name}
+
+
+def _fy_bounds(start_month: int, today: date) -> tuple[date, date]:
+    """Fiscal-year bounds for the year that contains `today`, given the
+    company's start month (e.g. start_month=1 → Jan 1..Dec 31)."""
+    year = today.year
+    start = date(year, start_month, 1)
+    if start > today:
+        start = date(year - 1, start_month, 1)
+    end_year = start.year + 1
+    end = date(end_year, start_month, 1) - timedelta(days=1)
+    return start, end
+
+
+def _ensure_current_financial_year(db: Session, company_id: int) -> FinancialYear:
+    """Create the current fiscal year row if it doesn't exist (idempotent).
+    Also used lazily by the /fiscal-years endpoint for companies created
+    before this table existed."""
+    company = db.query(Company).filter(Company.id == company_id).one()
+    start, end = _fy_bounds(company.fiscal_year_start_month, date.today())
+    fy = (db.query(FinancialYear)
+          .filter(FinancialYear.company_id == company_id, FinancialYear.start_date == start)
+          .one_or_none())
+    if fy is None:
+        fy = FinancialYear(company_id=company_id, name=str(start.year),
+                           start_date=start, end_date=end)
+        db.add(fy)
+        db.flush()
+    return fy
 
 
 @companies_router.get("")
@@ -182,6 +235,7 @@ def get_settings(company_id: int, db: Session = Depends(get_db)):
         "currency": company.currency, "fiscal_year_start_month": company.fiscal_year_start_month,
         "vat_enabled": bool(company.vat_enabled), "vat_rate": str(company.vat_rate),
         "inventory_enabled": bool(company.inventory_enabled),
+        "catalog_mode": bool(company.catalog_mode),
     }
 
 
@@ -191,6 +245,7 @@ def update_settings(
     vat_enabled: Optional[bool] = None,
     vat_rate: Optional[Decimal] = None,
     inventory_enabled: Optional[bool] = None,
+    catalog_mode: Optional[bool] = None,
     fiscal_year_start_month: Optional[int] = None,
     name: Optional[str] = None,
     business_type: Optional[str] = None,
@@ -216,6 +271,11 @@ def update_settings(
         company.vat_enabled = vat_enabled
     if inventory_enabled is not None:
         company.inventory_enabled = inventory_enabled
+    if catalog_mode is not None:
+        # «وضع الأصناف»: تعريف الأصناف بدون جرد — تفعيله يطفئ الجرد تلقائيًا.
+        company.catalog_mode = catalog_mode
+        if catalog_mode:
+            company.inventory_enabled = False
     db.commit()
     return get_settings(company_id, db)
 
@@ -227,7 +287,8 @@ def list_products(company_id: int, db: Session = Depends(get_db)):
                                         Product.deleted_at.is_(None)).all()
     return [{
         "id": p.id, "name": p.name, "sku": p.sku, "barcode": p.barcode,
-        "unit": p.unit, "purchase_price": str(p.purchase_price),
+        "unit": p.unit, "description": p.description,
+        "purchase_price": str(p.purchase_price),
         "selling_price": str(p.selling_price), "current_stock": str(p.current_stock),
         "minimum_stock": str(p.minimum_stock),
     } for p in products]
@@ -237,6 +298,7 @@ def list_products(company_id: int, db: Session = Depends(get_db)):
 def create_product(
     company_id: int, name: str, sku: Optional[str] = None,
     barcode: Optional[str] = None, unit: str = "قطعة",
+    description: Optional[str] = None,
     purchase_price: Decimal = Decimal("0"), selling_price: Decimal = Decimal("0"),
     opening_stock_qty: Decimal = Decimal("0"),
     minimum_stock: Decimal = Decimal("0"),
@@ -247,21 +309,25 @@ def create_product(
     received at `purchase_price` and its value is posted as
     Inventory Dr / Owner Capital Cr (owner contribution, spec §71 assumption)
     — one DB transaction for product + movement + journal entry.
+    In catalog_mode, opening_stock_qty is ignored (definition-only catalog).
     """
     if not name.strip():
         raise HTTPException(400, "اسم المنتج مطلوب.")
     if purchase_price < 0 or selling_price < 0 or opening_stock_qty < 0:
         raise HTTPException(400, "الأسعار والكميات لا يمكن أن تكون سالبة.")
 
+    company = db.query(Company).filter(Company.id == company_id).one()
     product = Product(
         company_id=company_id, name=name.strip(), sku=sku, barcode=barcode,
-        unit=unit, purchase_price=purchase_price, selling_price=selling_price,
+        unit=unit, description=description,
+        purchase_price=purchase_price, selling_price=selling_price,
         minimum_stock=minimum_stock, current_stock=0,
     )
     db.add(product)
     db.flush()
 
-    if opening_stock_qty > 0:
+    # catalog_mode: تعريف فقط — لا مخزون افتتاحي ولا قيد مساهمة رأس مال.
+    if opening_stock_qty > 0 and not company.catalog_mode:
         if purchase_price <= 0:
             raise HTTPException(400, "لا يمكن إضافة مخزون افتتاحي بدون تكلفة شراء صحيحة.")
         opening_stock_value(
@@ -559,7 +625,10 @@ def op_sale(
 
 def _parse_items_json(raw: str) -> list[dict]:
     """Parse the mobile client's items payload. Values arrive as strings via
-    query params; numbers are coerced so record_sale can validate them."""
+    query params; numbers are coerced so record_sale can validate them.
+    Each row is either a catalog line {"product_id", "quantity", "unit_price",
+    "description"?} or a free-text service line {"name", "quantity",
+    "unit_price"} without a product_id (مكتب يبيع خدمات بدون أصناف معرّفة)."""
     import json
     try:
         rows = json.loads(raw)
@@ -569,11 +638,26 @@ def _parse_items_json(raw: str) -> list[dict]:
     parsed = []
     for r in rows:
         try:
-            parsed.append({
-                "product_id": int(r["product_id"]),
+            raw_pid = r.get("product_id")
+            name = str(r.get("name") or "").strip()
+            desc = str(r.get("description") or "").strip()
+            row: dict = {
                 "quantity": Decimal(str(r["quantity"])),
                 "unit_price": Decimal(str(r["unit_price"])),
-            })
+            }
+            if raw_pid is not None and str(raw_pid).strip() not in ("", "None", "null"):
+                row["product_id"] = int(raw_pid)
+                if desc:
+                    row["description"] = desc[:200]
+            else:
+                # service line: the free text IS the line (fallback to description)
+                label = name or desc
+                if not label:
+                    raise AccountingError("بند بدون صنف يحتاج وصفًا مكتوبًا.")
+                row["description"] = label[:200]
+            parsed.append(row)
+        except AccountingError:
+            raise
         except Exception:
             raise AccountingError("بنود الفاتورة غير صالحة.")
     return parsed
@@ -648,15 +732,47 @@ def op_expense(
     company_id: int, amount: Decimal, method: str = "cash",
     expense_account_code: str = SystemAccountCode.UNCATEGORIZED_EXPENSE.value,
     notes: Optional[str] = None,
+    custom_label: Optional[str] = None,
     record: CompanyUser = Depends(RoleChecker("record")),
     db: Session = Depends(get_db)):
+    """مصروف: إما على حساب جاهز من دليل الحسابات (كهرباء/مياه/مرتبات…)
+    أو «مصروف مخصص» — يُنشئ حساب 6xxx جديد باسم حر يكتبه المستخدم (مرة واحدة،
+    ثم يظهر في دليل الحسابات والتقارير كحساب دائم)."""
     try:
+        if custom_label and custom_label.strip():
+            expense_account_code = _get_or_create_expense_account(
+                db, company_id, custom_label.strip())
         expense = record_expense(db, company_id=company_id, entry_date=date.today(), amount=amount,
                                   expense_account_code=expense_account_code, method=method, notes=notes)
         db.commit()
         return {"expense_id": expense.id, "status": "ok"}
     except Exception as e:
         _friendly_error(e, db)
+
+
+def _get_or_create_expense_account(db: Session, company_id: int, label: str) -> str:
+    """ابحث عن حساب مصروف 6xxx بهذا الاسم، أو أنشئه بأول كود متاح 6701..6899.
+    لا يسمح بتكرار الاسم لنفس الشركة — الحساب دائم ويظهر في التقارير."""
+    from app.models.accounts import Account, AccountType
+    existing = (db.query(Account)
+                .filter(Account.company_id == company_id,
+                        Account.name_ar == label,
+                        Account.code.like("6%"))
+                .one_or_none())
+    if existing is not None:
+        return existing.code
+    exp_type = db.query(AccountType).filter(AccountType.code == "EXPENSE").one()
+    taken = {a.code for a in db.query(Account).filter(
+        Account.company_id == company_id, Account.code.like("6%")).all()}
+    for n in range(6701, 6900):
+        code = str(n)
+        if code not in taken:
+            account = Account(company_id=company_id, code=code, name_ar=label,
+                              name_en=label, account_type_id=exp_type.id, is_system=False)
+            db.add(account)
+            db.flush()
+            return code
+    raise AccountingError("لا توجد أكواد متاحة لمصروف مخصص جديد.")
 
 
 @scoped.post("/operations/capital")
@@ -768,8 +884,16 @@ def report_vat(company_id: int, start: Optional[date] = None, end: Optional[date
 # ---------------------------------------------------------------- detailed reports (Phase 6)
 @scoped.get("/reports/sales")
 def report_sales(company_id: int, start: Optional[date] = None, end: Optional[date] = None,
+                 period: Optional[str] = None, by_item: bool = False,
                  db: Session = Depends(get_db)):
-    """تقرير المبيعات التفصيلي: كل فاتورة ببنودها + إجماليات الفترة (بند 39)."""
+    """تقرير المبيعات التفصيلي. فترات سريعة period=today|month|year،
+    و by_item=true يعيد التقرير مجمّعًا على أساس الصنف (بالعدد والكمية والقيمة)."""
+    start, end = _period_bounds(period, start, end)
+    if by_item:
+        rep = sales_by_item(db, company_id, start, end)
+        return {"rows": rep["rows"], "totals": {"total": str(rep["total"])},
+                "period": period, "start": str(start) if start else None,
+                "end": str(end) if end else None}
     rep = sales_report(db, company_id, start, end)
     return {
         "rows": [{"invoice_number": r.invoice_number, "invoice_date": str(r.invoice_date),
@@ -786,8 +910,16 @@ def report_sales(company_id: int, start: Optional[date] = None, end: Optional[da
 
 @scoped.get("/reports/purchases")
 def report_purchases(company_id: int, start: Optional[date] = None, end: Optional[date] = None,
+                     period: Optional[str] = None, by_item: bool = False,
                      db: Session = Depends(get_db)):
-    """تقرير المشتريات التفصيلي: كل فاتورة ببنودها + إجماليات الفترة (بند 39)."""
+    """تقرير المشتريات التفصيلي. فترات سريعة period=today|month|year،
+    و by_item=true يعيد التقرير مجمّعًا على أساس الصنف."""
+    start, end = _period_bounds(period, start, end)
+    if by_item:
+        rep = purchases_by_item(db, company_id, start, end)
+        return {"rows": rep["rows"], "totals": {"total": str(rep["total"])},
+                "period": period, "start": str(start) if start else None,
+                "end": str(end) if end else None}
     rep = purchases_report(db, company_id, start, end)
     return {
         "rows": [{"invoice_number": r.invoice_number, "invoice_date": str(r.invoice_date),
@@ -800,6 +932,22 @@ def report_purchases(company_id: int, start: Optional[date] = None, end: Optiona
                   for inv, lines in rep["lines"].items()},
         "totals": {k: (str(v) if isinstance(v, Decimal) else v) for k, v in rep["totals"].items()},
     }
+
+
+def _period_bounds(period: Optional[str], start: Optional[date],
+                   end: Optional[date]) -> tuple[Optional[date], Optional[date]]:
+    """فترات التقارير السريعة من التطبيق: today / month / year —
+    التواريخ الصريحة تتفوق دائمًا عند ورودها معًا."""
+    if start is not None and end is not None:
+        return start, end
+    today = date.today()
+    if period == "today":
+        return today, today
+    if period == "month":
+        return today.replace(day=1), today
+    if period == "year":
+        return today.replace(month=1, day=1), today
+    return start, end
 
 
 @scoped.get("/reports/inventory")
@@ -818,12 +966,132 @@ def report_inventory(company_id: int, db: Session = Depends(get_db)):
 
 @scoped.get("/reports/expenses")
 def report_expenses(company_id: int, start: Optional[date] = None, end: Optional[date] = None,
+                    period: Optional[str] = None,
                     db: Session = Depends(get_db)):
-    """تقرير المصروفات مجمّعة على حسابات المصروفات، من القيود مباشرة."""
+    """تقرير المصروفات مجمّعة على حسابات المصروفات (بنود المصروف) —
+    مع فترات سريعة period=today|month|year."""
+    start, end = _period_bounds(period, start, end)
     rep = expense_report(db, company_id, start, end)
     return {"rows": [{"code": r["code"], "name_ar": r["name_ar"], "amount": str(r["amount"])}
                      for r in rep["rows"]],
             "total": str(rep["total"])}
+
+
+# ---------------------------------------------------------------- fiscal years (spec: financial_years)
+@scoped.get("/fiscal-years")
+def list_fiscal_years(company_id: int, db: Session = Depends(get_db)):
+    """قائمة السنوات المالية — تُنشأ السنة الحالية تلقائيًا إن لم توجد (idempotent)."""
+    _ensure_current_financial_year(db, company_id)
+    db.commit()
+    rows = (db.query(FinancialYear).filter(FinancialYear.company_id == company_id)
+            .order_by(FinancialYear.start_date.desc()).all())
+    return [{"id": f.id, "name": f.name, "start_date": str(f.start_date),
+             "end_date": str(f.end_date), "is_closed": bool(f.is_closed)} for f in rows]
+
+
+# ---------------------------------------------------------------- fixed assets (spec: fixed_assets)
+@scoped.get("/assets")
+def list_fixed_assets(company_id: int, db: Session = Depends(get_db)):
+    """سجل الأصول الثابتة المسجلة (جدول حقيقي) — الحركة المحاسبية نفسها في القيود."""
+    rows = (db.query(FixedAsset).filter(FixedAsset.company_id == company_id,
+                                        FixedAsset.deleted_at.is_(None))
+            .order_by(FixedAsset.acquisition_date.desc(), FixedAsset.id.desc()).all())
+    return [{"id": a.id, "name": a.name, "notes": a.notes,
+             "acquisition_date": str(a.acquisition_date), "cost": str(a.cost),
+             "from_code": a.from_code, "journal_entry_id": a.journal_entry_id} for a in rows]
+
+
+@scoped.post("/assets")
+def create_fixed_asset(
+    company_id: int, name: str, cost: Decimal, from_code: str = "1100",
+    notes: Optional[str] = None,
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
+    """تسجيل أصل ثابت: جدول fixed_assets + قيد حقيقي (الأصل مدين / الخزينة أو البنك دائن)
+    في نفس المعاملة — الأصل يظهر فورًا في دفتر الأستاذ وكشف حركاته."""
+    from_code = from_code.strip()
+    if from_code not in (SystemAccountCode.CASH.value, SystemAccountCode.BANK.value):
+        raise HTTPException(400, "يجب سحب تكلفة الأصل من الخزينة (1100) أو البنك (1200) فقط.")
+    if not name.strip():
+        raise HTTPException(400, "اسم الأصل مطلوب.")
+    if cost <= 0:
+        raise HTTPException(400, "تكلفة الأصل يجب أن تكون أكبر من صفر.")
+    try:
+        entry = AccountingService.create_transfer(
+            db, company_id=company_id, entry_date=date.today(), amount=cost,
+            from_code=from_code, to_code="1500",
+            description=f"شراء أصل ثابت: {name.strip()}",
+        )
+        asset = FixedAsset(
+            company_id=company_id, name=name.strip(), notes=notes,
+            acquisition_date=date.today(), cost=cost, from_code=from_code,
+            journal_entry_id=entry.id,
+        )
+        db.add(asset)
+        db.commit()
+        return {"id": asset.id, "name": asset.name, "journal_entry_id": entry.id}
+    except Exception as e:
+        _friendly_error(e, db)
+
+
+# ---------------------------------------------------------------- bank accounts (spec: bank_accounts)
+@scoped.get("/bank-accounts")
+def list_bank_accounts(company_id: int, db: Session = Depends(get_db)):
+    """البنوك المسجلة للشركة (حساب 1200 في الدليل يبقى مصدر الرصيد المحاسبي)."""
+    rows = (db.query(BankAccount).filter(BankAccount.company_id == company_id,
+                                         BankAccount.deleted_at.is_(None))
+            .order_by(BankAccount.id.asc()).all())
+    return [{"id": b.id, "name": b.name, "account_number": b.account_number,
+             "notes": b.notes} for b in rows]
+
+
+@scoped.post("/bank-accounts")
+def create_bank_account(
+    company_id: int, name: str, account_number: Optional[str] = None,
+    notes: Optional[str] = None,
+    record: CompanyUser = Depends(RoleChecker("record")),
+    db: Session = Depends(get_db)):
+    if not name.strip():
+        raise HTTPException(400, "اسم البنك مطلوب.")
+    bank = BankAccount(company_id=company_id, name=name.strip(),
+                       account_number=(account_number or None), notes=notes)
+    db.add(bank)
+    db.commit()
+    return {"id": bank.id, "name": bank.name}
+
+
+# ---------------------------------------------------------------- cash / bank transaction ledgers (spec)
+@scoped.get("/cash-transactions")
+def list_cash_transactions(company_id: int, start: Optional[date] = None,
+                           end: Optional[date] = None, db: Session = Depends(get_db)):
+    """كشف حركات الخزينة (1100) من جدول cash_transactions — يُبنى تلقائيًا
+    من كل قيد مسّ الخزينة، فلا يمكن أن يختلف عن القيود أبدًا."""
+    q = (db.query(CashTransaction).filter(CashTransaction.company_id == company_id))
+    if start is not None:
+        q = q.filter(CashTransaction.txn_date >= start)
+    if end is not None:
+        q = q.filter(CashTransaction.txn_date <= end)
+    rows = q.order_by(CashTransaction.txn_date.asc(), CashTransaction.id.asc()).all()
+    return [{"id": t.id, "date": str(t.txn_date), "direction": t.direction,
+             "amount": str(t.amount), "description": t.description,
+             "reference_type": t.reference_type, "journal_entry_id": t.journal_entry_id}
+            for t in rows]
+
+
+@scoped.get("/bank-transactions")
+def list_bank_transactions(company_id: int, start: Optional[date] = None,
+                           end: Optional[date] = None, db: Session = Depends(get_db)):
+    """كشف حركات البنك (1200) من جدول bank_transactions — mirror تلقائي من القيود."""
+    q = (db.query(BankTransaction).filter(BankTransaction.company_id == company_id))
+    if start is not None:
+        q = q.filter(BankTransaction.txn_date >= start)
+    if end is not None:
+        q = q.filter(BankTransaction.txn_date <= end)
+    rows = q.order_by(BankTransaction.txn_date.asc(), BankTransaction.id.asc()).all()
+    return [{"id": t.id, "date": str(t.txn_date), "direction": t.direction,
+             "amount": str(t.amount), "description": t.description,
+             "reference_type": t.reference_type, "journal_entry_id": t.journal_entry_id}
+            for t in rows]
 
 
 # ---------------------------------------------------------------- team (Phase 7, صلاحيات المستخدمين)
@@ -1042,6 +1310,7 @@ def AppFmt_num(v: float) -> str:
 def export_report(company_id: int, report_key: str, fmt: str = "pdf",
                   start: Optional[date] = None, end: Optional[date] = None,
                   account_code: Optional[str] = None,
+                  membership: CompanyUser = Depends(RoleChecker("export")),
                   db: Session = Depends(get_db)):
     """PDF/Excel لأي تقرير من: sales, purchases, inventory, expenses, vat,
     trial_balance, general_ledger. fmt = pdf | excel (أو xlsx)."""

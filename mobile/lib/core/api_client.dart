@@ -9,10 +9,12 @@ import 'sync_manager.dart';
 /// carries the logged-in user's token (from AppSession) if one is set —
 /// screens never touch headers themselves.
 ///
-/// Phase 6 offline-first (spec §42/§43): every successful GET is cached in
-/// [LocalStore], and `_get` falls back to that cache on network failure.
-/// `_post` funnels through [sendQueued]; the offline path enqueues instead
-/// of throwing, and SyncManager replays the queue FIFO when back online.
+/// ARCHITECTURE (mandatory): the cloud database on the server is the ONLY
+/// source of truth. Reads may use the tiny last-known-payload display cache
+/// (temporary UI data, per the architecture requirement), but WRITES are
+/// strictly online-only: they go straight to the server or fail with a
+/// clear message — nothing accounting-related is ever stored on the device
+/// as a primary copy, and no local sync queue exists anymore.
 class ApiClient {
   ApiClient({required this.baseUrl});
 
@@ -192,6 +194,7 @@ class ApiClient {
     required String name,
     String? sku,
     String unit = 'قطعة',
+    String? description,
     double purchasePrice = 0,
     double sellingPrice = 0,
     double openingStockQty = 0,
@@ -201,6 +204,8 @@ class ApiClient {
       'name': name,
       if (sku != null && sku.trim().isNotEmpty) 'sku': sku,
       'unit': unit,
+      if (description != null && description.trim().isNotEmpty)
+        'description': description.trim(),
       'purchase_price': purchasePrice.toString(),
       'selling_price': sellingPrice.toString(),
       'opening_stock_qty': openingStockQty.toString(),
@@ -309,11 +314,17 @@ class ApiClient {
     required double amount,
     required String method,
     String? expenseAccountCode,
+    String? notes,
+    /// «مصروف مخصص»: اسم حر يكتبه المستخدم — السيرفر ينشئ حسابًا دائمًا به
+    /// (أو يعيد استخدام الموجود) ويُرحّل المصروف عليه.
+    String? customLabel,
   }) {
     return _post('/companies/$companyId/operations/expense', {
       'amount': amount.toString(),
       'method': method,
       if (expenseAccountCode != null) 'expense_account_code': expenseAccountCode,
+      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      if (customLabel != null && customLabel.trim().isNotEmpty) 'custom_label': customLabel.trim(),
     }, useQueryParams: true);
   }
 
@@ -402,17 +413,40 @@ class ApiClient {
       (await _get('/companies/$companyId/reports/profit-and-loss', cacheKey: 'profit_and_loss')) as Map<String, dynamic>;
 
   // ------------------------------------------------- detailed reports (Phase 6)
-  Future<Map<String, dynamic>> getSalesReport(int companyId) async =>
-      (await _get('/companies/$companyId/reports/sales', cacheKey: 'sales_report')) as Map<String, dynamic>;
+  /// [period]: today | month | year (فترات سريعة). [byItem]: تجميع على أساس
+  /// الصنف بالعدد والكمية والقيمة. كلها query params — الكاش يبقى بلا مفتاح
+  /// ثابت حتى لا تختلط الفترات.
+  Future<Map<String, dynamic>> getSalesReport(int companyId,
+      {String? period, bool byItem = false}) async {
+    final q = _reportQuery(period, byItem);
+    return (await _get('/companies/$companyId/reports/sales$q',
+        cacheKey: q.isEmpty ? 'sales_report' : null)) as Map<String, dynamic>;
+  }
 
-  Future<Map<String, dynamic>> getPurchasesReport(int companyId) async =>
-      (await _get('/companies/$companyId/reports/purchases', cacheKey: 'purchases_report')) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> getPurchasesReport(int companyId,
+      {String? period, bool byItem = false}) async {
+    final q = _reportQuery(period, byItem);
+    return (await _get('/companies/$companyId/reports/purchases$q',
+        cacheKey: q.isEmpty ? 'purchases_report' : null)) as Map<String, dynamic>;
+  }
 
   Future<Map<String, dynamic>> getInventoryReport(int companyId) async =>
       (await _get('/companies/$companyId/reports/inventory', cacheKey: 'inventory_report')) as Map<String, dynamic>;
 
-  Future<Map<String, dynamic>> getExpensesReport(int companyId) async =>
-      (await _get('/companies/$companyId/reports/expenses', cacheKey: 'expenses_report')) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> getExpensesReport(int companyId, {String? period}) async {
+    final q = _reportQuery(period, false);
+    return (await _get('/companies/$companyId/reports/expenses$q',
+        cacheKey: q.isEmpty ? 'expenses_report' : null)) as Map<String, dynamic>;
+  }
+
+  /// Query string مشترك لفترات التقارير السريعة والتجميع بالصنف.
+  String _reportQuery(String? period, bool byItem) {
+    final parts = <String>[
+      if (period != null && period.isNotEmpty) 'period=$period',
+      if (byItem) 'by_item=true',
+    ];
+    return parts.isEmpty ? '' : '?${parts.join('&')}';
+  }
 
   // ------------------------------------------------- backup / restore (Phase 6)
   /// Downloads the full company backup JSON. Returns the raw bytes plus a
@@ -561,25 +595,18 @@ class ApiClient {
   /// reflects that; it's true everywhere in this client except /auth/login,
   /// which needs a real form body for OAuth2PasswordRequestForm.
   ///
-  /// Phase 6: every write funnels through [sendQueued]; when the device is
-  /// offline the write is stored in the sync queue (FIFO, replayed by
-  /// SyncManager) and a synthetic response is returned so screens can treat
-  /// it as accepted — the offline banner shows the pending count.
+  /// ARCHITECTURE: writes are ONLINE-ONLY (the server's cloud database is the
+  /// single source of truth; no offline mode at this stage). A network failure
+  /// surfaces immediately so the user can retry — we never store accounting
+  /// writes on the device. The only local write is draining a legacy queue
+  /// left by older app versions, so data saved before this update is not lost.
   Future<Map<String, dynamic>> _post(String path, Map<String, String> params, {required bool useQueryParams}) async {
-    try {
-      return await sendQueued(path, params);
-    } on ApiNetworkException {
-      // Auth and company-creation only make sense with the server reachable
-      // — queueing a register call would replay garbage later.
-      if (path.startsWith('/auth') || path == '/companies') rethrow;
-      await SyncManager.instance.enqueueOfflineWrite(path, params);
-      return const {'status': 'queued', 'offline': true};
-    }
+    return sendQueued(path, params);
   }
 
-  /// Sends one write immediately (used by the sync worker to replay the
-  /// queue). Throws [ApiNetworkException] when offline — callers that want
-  /// offline-tolerant behavior catch it and enqueue.
+  /// Sends one write immediately. Also used by the startup legacy-queue
+  /// drain below: older versions could leave unsent operations on the device,
+  /// and those are uploaded once so no previously recorded operation is lost.
   Future<Map<String, dynamic>> sendQueued(String path, Map<String, String> params) async {
     final res = await _send(
       () => http.post(Uri.parse('$baseUrl$path').replace(queryParameters: params), headers: _headers),

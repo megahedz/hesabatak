@@ -16,9 +16,13 @@ class PurchaseInvoiceScreen extends StatefulWidget {
 }
 
 class _Item {
-  int? productId;
+  int? productId; // null = بند شراء نص حر بدون صنف معرّف
+  String description = '';
   double quantity = 1;
   double unitCost = 0;
+  final TextEditingController descController = TextEditingController();
+
+  void dispose() => descController.dispose();
 
   double get lineTotal => double.parse((quantity * unitCost).toStringAsFixed(2));
 }
@@ -47,6 +51,9 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
   @override
   void dispose() {
     _dateController.dispose();
+    for (final i in _items) {
+      i.dispose();
+    }
     super.dispose();
   }
 
@@ -96,16 +103,24 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
       _toast('الفاتورة الآجلة تحتاج اختيار مورد');
       return;
     }
+    // كل بند لازم يبقى له صنف معرّف أو وصف شراء مكتوب يدويًا.
+    for (final i in _items) {
+      if (i.lineTotal > 0 && i.productId == null && i.description.trim().isEmpty) {
+        _toast('اكتب وصف الشراء في كل بند (أو اختر صنفًا من القائمة)');
+        return;
+      }
+    }
     setState(() => _saving = true);
     try {
       // بنود بأصناف محددة → مبلغ الفاتورة = مجموع البنود، والمخزون يستلم
       // تلقائيًا (سعر الشراء/الكمية). بدون بنود → شراء مباشر للمصروف/المخزون.
       final items = _items
-          .where((i) => i.productId != null && i.lineTotal > 0)
+          .where((i) => i.lineTotal > 0 && (i.productId != null || i.description.trim().isNotEmpty))
           .map((i) => {
                 'product_id': i.productId,
                 'quantity': i.quantity,
                 'unit_price': i.unitCost,
+                if (i.description.trim().isNotEmpty) 'description': i.description.trim(),
               })
           .toList();
       final res = await _api.postPurchase(
@@ -268,6 +283,11 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
                 ),
                 const SizedBox(height: 8),
                 for (var i = 0; i < _items.length; i++) _itemRow(_items[i], i),
+                const SizedBox(height: 4),
+                Text(
+                  'اختر صنفًا من القائمة، أو اتركه فارغًا واكتب وصف الشراء يدويًا — وكل بند يقبل وصفًا يظهر في الفاتورة.',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                ),
               ],
             ),
           ),
@@ -357,56 +377,87 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
   Widget _itemRow(_Item item, int index) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: 36,
-            child: IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              icon: const Icon(Icons.delete_outline, color: AppColors.red, size: 20),
-              onPressed: _items.length > 1 ? () => setState(() => _items.removeAt(index)) : null,
+          Row(
+            children: [
+              SizedBox(
+                width: 36,
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.delete_outline, color: AppColors.red, size: 20),
+                  onPressed: _items.length > 1
+                      ? () => setState(() {
+                            _items.removeAt(index).dispose();
+                          })
+                      : null,
+                ),
+              ),
+              Expanded(
+                flex: 4,
+                child: DropdownButtonFormField<int>(
+                  value: item.productId,
+                  isDense: true,
+                  hint: const Text('اختر صنفًا…', style: TextStyle(fontSize: 12.5)),
+                  decoration:
+                      const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                  items: _products
+                      .map((p) => DropdownMenuItem<int>(
+                            value: p['id'] as int,
+                            child: Text(p['name'] as String,
+                                style: const TextStyle(fontSize: 12.5),
+                                overflow: TextOverflow.ellipsis),
+                          ))
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() {
+                      item.productId = v;
+                      final p = _products.firstWhere((p) => p['id'] == v, orElse: () => null);
+                      if (p != null) item.unitCost = double.parse(p['purchase_price'] as String);
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 2,
+                child: _numField(item.quantity, (v) => item.quantity = v),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 3,
+                child: _numField(item.unitCost, (v) => item.unitCost = v),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 3,
+                child: Text(AppFmt.num(item.lineTotal),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy)),
+              ),
+            ],
+          ),
+          // وصف البند — إجباري للبنود بدون صنف معرّف، اختياري لغيرها.
+          Padding(
+            padding: const EdgeInsets.only(top: 6, right: 36),
+            child: TextField(
+              controller: item.descController,
+              style: const TextStyle(fontSize: 12.5),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: item.productId == null
+                    ? 'وصف الشراء (إجباري) — مثال: تصميم شعار'
+                    : 'وصف إضافي (اختياري)',
+                hintStyle: TextStyle(
+                    fontSize: 11.5,
+                    color: item.productId == null ? AppColors.amber : AppColors.textSecondary),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onChanged: (v) => item.description = v,
             ),
-          ),
-          Expanded(
-            flex: 4,
-            child: DropdownButtonFormField<int>(
-              value: item.productId,
-              isDense: true,
-              hint: const Text('اختر', style: TextStyle(fontSize: 12.5)),
-              decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
-              items: _products
-                  .map((p) => DropdownMenuItem<int>(
-                        value: p['id'] as int,
-                        child: Text(p['name'] as String,
-                            style: const TextStyle(fontSize: 12.5), overflow: TextOverflow.ellipsis),
-                      ))
-                  .toList(),
-              onChanged: (v) {
-                setState(() {
-                  item.productId = v;
-                  final p = _products.firstWhere((p) => p['id'] == v, orElse: () => null);
-                  if (p != null) item.unitCost = double.parse(p['purchase_price'] as String);
-                });
-              },
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 2,
-            child: _numField(item.quantity, (v) => item.quantity = v),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 3,
-            child: _numField(item.unitCost, (v) => item.unitCost = v),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 3,
-            child: Text(AppFmt.num(item.lineTotal),
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy)),
           ),
         ],
       ),

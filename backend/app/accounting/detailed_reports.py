@@ -264,3 +264,118 @@ def expense_report(db: Session, company_id: int, start: Optional[date] = None,
         "rows": rows,
         "total": money(sum((r["amount"] for r in rows), Decimal("0"))),
     }
+
+
+# ======================================================================
+# v0.7.9: by-item aggregation for sales/purchases + period shortcuts.
+# "البيع بالعدد زي المشتريات": totals per item name with quantity sums,
+# computed from the invoice line tables (documents stay the operational truth).
+# ======================================================================
+def _period_bounds(period: Optional[str], start: Optional[date],
+                   end: Optional[date]) -> tuple[Optional[date], Optional[date]]:
+    """Resolve the UI's quick periods: today / month / year — explicit
+    start/end always win when both are given."""
+    if start is not None and end is not None:
+        return start, end
+    today = date.today()
+    if period == "today":
+        return today, today
+    if period == "month":
+        first = today.replace(day=1)
+        return first, today
+    if period == "year":
+        return today.replace(month=1, day=1), today
+    return start, end
+
+
+def sales_by_item(db: Session, company_id: int, start: Optional[date] = None,
+                  end: Optional[date] = None) -> dict:
+    """المبيعات مجمّعة على أساس الصنف: عدد الفواتير التي ظهر فيها، إجمالي
+    الكمية المباعة، متوسط السعر، وإجمالي القيمة — من بنود فواتير البيع
+    المؤكدة. البنود النصية (خدمات بدون صنف) تتجمع باسم وصفها."""
+    q = (
+        db.query(
+            SalesInvoiceItem.product_id,
+            Product.name,
+            Product.unit,
+            SalesInvoiceItem.description,
+            func.count(SalesInvoiceItem.id),
+            func.sum(SalesInvoiceItem.quantity),
+            func.sum(SalesInvoiceItem.line_total),
+        )
+        .join(SalesInvoice, SalesInvoice.id == SalesInvoiceItem.sales_invoice_id)
+        .outerjoin(Product, Product.id == SalesInvoiceItem.product_id)
+        .filter(SalesInvoice.company_id == company_id,
+                SalesInvoice.status == DocumentStatus.CONFIRMED)
+    )
+    if start is not None:
+        q = q.filter(SalesInvoice.invoice_date >= start)
+    if end is not None:
+        q = q.filter(SalesInvoice.invoice_date <= end)
+    q = q.group_by(SalesInvoiceItem.product_id, Product.name, Product.unit,
+                   SalesInvoiceItem.description)
+
+    rows = []
+    for pid, name, unit, desc, cnt, qty, total in q.all():
+        quantity = Decimal(qty or 0)
+        line_total = money(Decimal(total or 0))
+        label = name or (desc or "-")
+        rows.append({
+            "label": label,
+            "unit": unit or "",
+            "invoice_count": int(cnt),
+            "quantity": str(quantity),
+            "avg_price": str(money(line_total / quantity) if quantity else "0.00"),
+            "total": str(line_total),
+        })
+    rows.sort(key=lambda r: -Decimal(r["total"]))
+    return {
+        "rows": rows,
+        "total": money(sum((Decimal(r["total"]) for r in rows), Decimal("0"))),
+    }
+
+
+def purchases_by_item(db: Session, company_id: int, start: Optional[date] = None,
+                      end: Optional[date] = None) -> dict:
+    """المشتريات مجمّعة على أساس الصنف — نفس منطق sales_by_item على بنود
+    فواتير الشراء المؤكدة (بالأعداد والإجماليات)."""
+    q = (
+        db.query(
+            PurchaseInvoiceItem.product_id,
+            Product.name,
+            Product.unit,
+            PurchaseInvoiceItem.description,
+            func.count(PurchaseInvoiceItem.id),
+            func.sum(PurchaseInvoiceItem.quantity),
+            func.sum(PurchaseInvoiceItem.line_total),
+        )
+        .join(PurchaseInvoice, PurchaseInvoice.id == PurchaseInvoiceItem.purchase_invoice_id)
+        .outerjoin(Product, Product.id == PurchaseInvoiceItem.product_id)
+        .filter(PurchaseInvoice.company_id == company_id,
+                PurchaseInvoice.status == DocumentStatus.CONFIRMED)
+    )
+    if start is not None:
+        q = q.filter(PurchaseInvoice.invoice_date >= start)
+    if end is not None:
+        q = q.filter(PurchaseInvoice.invoice_date <= end)
+    q = q.group_by(PurchaseInvoiceItem.product_id, Product.name, Product.unit,
+                   PurchaseInvoiceItem.description)
+
+    rows = []
+    for pid, name, unit, desc, cnt, qty, total in q.all():
+        quantity = Decimal(qty or 0)
+        line_total = money(Decimal(total or 0))
+        label = name or (desc or "-")
+        rows.append({
+            "label": label,
+            "unit": unit or "",
+            "invoice_count": int(cnt),
+            "quantity": str(quantity),
+            "avg_price": str(money(line_total / quantity) if quantity else "0.00"),
+            "total": str(line_total),
+        })
+    rows.sort(key=lambda r: -Decimal(r["total"]))
+    return {
+        "rows": rows,
+        "total": money(sum((Decimal(r["total"]) for r in rows), Decimal("0"))),
+    }

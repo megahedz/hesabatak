@@ -38,6 +38,7 @@ from app.models.documents import (
 )
 from app.models.inventory import StockMovementType
 from app.models.journal import JournalEntry, JournalEntryLine
+from app.models.operations import FinancialYear, FixedAsset, BankAccount
 from app.accounting.inventory import QTY_PLACES, COST_PLACES
 from app.accounting.reports import trial_balance
 
@@ -130,6 +131,24 @@ def export_backup(db: Session, company_id: int) -> dict:
             "vat_enabled": bool(company.vat_enabled), "vat_rate": str(company.vat_rate),
             "inventory_enabled": bool(company.inventory_enabled),
         },
+        "financial_years": [
+            {"id": f.id, "name": f.name, "start_date": str(f.start_date),
+             "end_date": str(f.end_date), "is_closed": bool(f.is_closed)}
+            for f in db.query(FinancialYear).filter(FinancialYear.company_id == company_id)
+                       .order_by(FinancialYear.start_date).all()
+        ],
+        "fixed_assets": [
+            {"id": a.id, "name": a.name, "notes": a.notes,
+             "acquisition_date": str(a.acquisition_date), "cost": str(a.cost),
+             "from_code": a.from_code, "journal_entry_id": a.journal_entry_id}
+            for a in db.query(FixedAsset).filter(FixedAsset.company_id == company_id)
+                       .order_by(FixedAsset.id).all()
+        ],
+        "bank_accounts": [
+            {"id": b.id, "name": b.name, "account_number": b.account_number, "notes": b.notes}
+            for b in db.query(BankAccount).filter(BankAccount.company_id == company_id)
+                       .order_by(BankAccount.id).all()
+        ],
         "customers": [
             _row(c, [("id", "id"), ("name", "name"), ("phone", "phone"),
                      ("address", "address"), ("tax_id", "tax_id"),
@@ -527,6 +546,43 @@ def _restore_in_session(db: Session, company_id: int, payload: dict) -> int:
 
     company.vat_enabled = bool(payload["company"].get("vat_enabled", company.vat_enabled))
     company.inventory_enabled = bool(payload["company"].get("inventory_enabled", company.inventory_enabled))
+
+    # ---- cloud-architecture tables ----
+    # Financial years: re-create from the file (or the current one if the file predates them).
+    db.query(FinancialYear).filter(FinancialYear.company_id == company_id).delete(synchronize_session=False)
+    for f in payload.get("financial_years", []):
+        db.add(FinancialYear(
+            id=int(f["id"]), company_id=company_id, name=str(f.get("name") or f["start_date"][:4]),
+            start_date=_parse_d(f["start_date"], "start_date"),
+            end_date=_parse_d(f["end_date"], "end_date"),
+            is_closed=bool(f.get("is_closed", False)),
+        ))
+    db.flush()
+    from app.main import _ensure_current_financial_year
+    _ensure_current_financial_year(db, company_id)
+
+    # Fixed assets & bank accounts: replaced with the file's rows.
+    db.query(FixedAsset).filter(FixedAsset.company_id == company_id).delete(synchronize_session=False)
+    for a in payload.get("fixed_assets", []):
+        db.add(FixedAsset(
+            id=int(a["id"]), company_id=company_id, name=str(a["name"]),
+            notes=a.get("notes"),
+            acquisition_date=_parse_d(a["acquisition_date"], "acquisition_date"),
+            cost=_parse_dec(a.get("cost", 0), "cost"),
+            from_code=str(a.get("from_code") or "1100"),
+            journal_entry_id=int(a["journal_entry_id"]) if a.get("journal_entry_id") is not None else None,
+        ))
+    db.query(BankAccount).filter(BankAccount.company_id == company_id).delete(synchronize_session=False)
+    for b in payload.get("bank_accounts", []):
+        db.add(BankAccount(
+            id=int(b["id"]), company_id=company_id, name=str(b["name"]),
+            account_number=b.get("account_number"), notes=b.get("notes"),
+        ))
+
+    # Cash/bank ledgers are derived — rebuild them from the restored journal
+    # (the single source of truth) instead of trusting the file.
+    from app.accounting.engine import rebuild_cash_bank_mirrors
+    rebuild_cash_bank_mirrors(db, company_id=company_id)
 
     db.commit()
     return len(entries_map)

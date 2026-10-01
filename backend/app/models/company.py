@@ -26,6 +26,9 @@ class Company(Base, TimestampMixin):
     vat_rate = Column(Numeric(5, 2), nullable=False, default=0)  # e.g. 14.00 for Egypt's standard VAT
     inventory_enabled = Column(Boolean, default=False, nullable=False)
     is_demo = Column(Boolean, default=False, nullable=False)  # spec §58: demo data fully separated
+    # «وضع الأصناف»: تعريف الأصناف فقط (كتالوج) بدون جرد كميات — البيع/الشراء
+    # لا يسحب/يستلم مخزونًا ولا يمنع البيع بأكتر من الرصيد. مناسب لمكتب/خدمات.
+    catalog_mode = Column(Boolean, default=False, nullable=False)
 
 
 class CompanyUser(Base, TimestampMixin):

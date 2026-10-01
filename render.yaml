@@ -5,7 +5,13 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: HESABATAK_SECRET_KEY
         generateValue: true   # Render generates a real random secret for you automatically
+      - key: DATABASE_URL
+        sync: false           # set to your cloud PostgreSQL URL (Neon) — NEVER a SQLite path.
+                              # The app refuses to start on SQLite when HESABATAK_REQUIRE_POSTGRES=1.
+      - key: HESABATAK_REQUIRE_POSTGRES
+        value: "1"            # production guard: cloud Postgres is the source of truth
     plan: free

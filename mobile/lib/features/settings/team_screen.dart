@@ -8,7 +8,7 @@ import '../home/home_shell.dart';
 /// إدارة الفريق (Phase 7) — للمالك فقط: أعضاء الشركة وأدوارهم،
 /// إضافة عضو برقم هاتفه، تغيير الدور، أو الإزالة.
 /// الأدوار: owner مالك (كل الصلاحيات) / accountant محاسب (تسجيل وتقارير) /
-/// staff موظف (عرض فقط).
+/// data_entry مسجل بيانات (تسجيل العمليات فقط) / staff موظف (عرض فقط).
 class TeamScreen extends StatefulWidget {
   const TeamScreen({super.key});
 
@@ -62,6 +62,8 @@ class _TeamScreenState extends State<TeamScreen> {
         return 'مالك';
       case 'accountant':
         return 'محاسب';
+      case 'data_entry':
+        return 'مسجل بيانات';
       default:
         return 'موظف';
     }
@@ -107,10 +109,20 @@ class _TeamScreenState extends State<TeamScreen> {
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(value: 'accountant', label: Text('محاسب')),
+                  ButtonSegment(value: 'data_entry', label: Text('مسجل بيانات')),
                   ButtonSegment(value: 'staff', label: Text('موظف')),
                 ],
                 selected: {role},
                 onSelectionChanged: (s) => setSheetState(() => role = s.first),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                role == 'accountant'
+                    ? 'المحاسب: تسجيل العمليات + التقارير + النسخ الاحتياطي.'
+                    : role == 'data_entry'
+                        ? 'مسجل البيانات: يسجّل البيع والشراء والمصروفات فقط — لا يرى التقارير المالية ولا يصدّر.'
+                        : 'الموظف: عرض البيانات فقط بدون تسجيل.',
+                style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),
               FilledButton(
@@ -174,7 +186,12 @@ class _TeamScreenState extends State<TeamScreen> {
               child: Text('تغيير الدور',
                   style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.navy)),
             ),
-            for (final (label, value) in const [('مالك', 'owner'), ('محاسب', 'accountant'), ('موظف', 'staff')])
+            for (final (label, value) in const [
+              ('مالك', 'owner'),
+              ('محاسب', 'accountant'),
+              ('مسجل بيانات', 'data_entry'),
+              ('موظف', 'staff'),
+            ])
               ListTile(
                 title: Text(label),
                 trailing: current == value ? const Icon(Icons.check, color: AppColors.primary) : null,
@@ -365,6 +382,8 @@ class _TeamScreenState extends State<TeamScreen> {
         return 'مالك — كل الصلاحيات';
       case 'accountant':
         return 'محاسب — تسجيل العمليات والتقارير';
+      case 'data_entry':
+        return 'مسجل بيانات — تسجيل العمليات فقط';
       default:
         return 'موظف — عرض فقط';
     }

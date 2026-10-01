@@ -23,7 +23,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
   }
 
   @override
@@ -62,6 +62,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
               tabs: const [
                 Tab(text: 'المبيعات'),
                 Tab(text: 'المشتريات'),
+                Tab(text: 'المبيعات بالصنف'),
                 Tab(text: 'المخزون'),
                 Tab(text: 'ميزان المراجعة'),
                 Tab(text: 'الميزانية'),
@@ -75,6 +76,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
               children: [
                 _SalesTab(api: _api),
                 _PurchasesTab(api: _api),
+                _SalesByItemTab(api: _api),
                 _InventoryTab(api: _api),
                 _TrialBalanceTab(api: _api),
                 _BalanceSheetTab(api: _api),
@@ -116,27 +118,62 @@ class _SalesTab extends StatelessWidget {
   }
 }
 
-class _PurchasesTab extends StatelessWidget {
-  const _PurchasesTab({required this.api});
+/// «المبيعات بالصنف»: تجميع كل بند بيع على أساس الصنف/الخدمة — بالعدد
+/// (الكمية) وإجمالي القيمة، نفس منطق المشتريات، مع فترات يومي/شهري/سنوي.
+class _SalesByItemTab extends StatefulWidget {
+  const _SalesByItemTab({required this.api});
   final ApiClient api;
 
   @override
+  State<_SalesByItemTab> createState() => _SalesByItemTabState();
+}
+
+class _SalesByItemTabState extends State<_SalesByItemTab> {
+  bool _purchasesMode = false;
+
+  @override
   Widget build(BuildContext context) {
-    return _DetailedReportList(
-      api: api,
-      futureFactory: api.getPurchasesReport,
-      exportKey: 'purchases',
-      emptyText: 'لا توجد فواتير شراء بعد — سجّل أول عملية شراء من الرئيسية',
-      rowBuilder: (context, r) {
-        final total = double.parse(r['total'] as String);
-        return _ReportTile(
-          icon: Icons.shopping_cart_rounded,
-          title: r['supplier_name'] as String? ?? 'مورد نقدي',
-          subtitle: '${r['invoice_number']} — ${r['invoice_date']}'
-              '${(r['is_credit'] as bool) ? ' — آجل' : ''}',
-          value: '${AppFmt.num(total)} ج.م',
-        );
-      },
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('مبيعات بالصنف')),
+              ButtonSegment(value: true, label: Text('مشتريات بالصنف')),
+            ],
+            selected: {_purchasesMode},
+            onSelectionChanged: (s) => setState(() => _purchasesMode = s.first),
+          ),
+        ),
+        Expanded(
+          child: _DetailedReportList(
+            api: widget.api,
+            futureFactory: _purchasesMode
+                ? widget.api.getPurchasesReport
+                : widget.api.getSalesReport,
+            exportKey: _purchasesMode ? 'purchases' : 'sales',
+            emptyText: _purchasesMode
+                ? 'لا توجد مشتريات في هذه الفترة'
+                : 'لا توجد مبيعات في هذه الفترة',
+            rowBuilder: (context, r) {
+              final total = double.parse(r['total'] as String);
+              final qty = double.tryParse(r['quantity'] as String? ?? '') ?? 0;
+              final unit = (r['unit'] as String?) ?? '';
+              final count = r['invoice_count'] as int? ?? 0;
+              return _ReportTile(
+                icon: _purchasesMode
+                    ? Icons.shopping_cart_rounded
+                    : Icons.sell_rounded,
+                title: r['label'] as String? ?? '—',
+                subtitle: 'العدد: ${AppFmt.num(qty)}${unit.isEmpty ? '' : ' $unit'}'
+                    ' — في $count فاتورة',
+                value: '${AppFmt.num(total)} ج.م',
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -149,9 +186,10 @@ class _InventoryTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DetailedReportList(
       api: api,
-      futureFactory: api.getInventoryReport,
+      futureFactory: (cid, {String? period, bool byItem = false}) => api.getInventoryReport(cid),
       exportKey: 'inventory',
       emptyText: 'لا توجد منتجات بعد',
+      showPeriods: false,
       rowBuilder: (context, r) {
         final stock = double.parse(r['current_stock'] as String);
         final value = double.parse(r['stock_value'] as String);
@@ -175,32 +213,106 @@ class _InventoryTab extends StatelessWidget {
 
 final fmtAr = NumberFormat('#,##0.##', 'en');
 
-/// قائمة تقرير تفصيلي: شريط إجمالي + زر تصدير + صفوف البطاقات.
-class _DetailedReportList extends StatelessWidget {
+/// الفترات السريعة للتقارير — تظهر كمجموعة أزرار فوق التقرير.
+const _periodChoices = <(String, String)>[
+  ('كل الفترات', ''),
+  ('اليوم', 'today'),
+  ('هذا الشهر', 'month'),
+  ('هذه السنة', 'year'),
+];
+
+/// قائمة تقرير تفصيلي: شريط إجمالي + فترات سريعة + زر تصدير + صفوف البطاقات.
+class _DetailedReportList extends StatefulWidget {
   const _DetailedReportList({
     required this.api,
     required this.futureFactory,
     required this.exportKey,
     required this.emptyText,
     required this.rowBuilder,
+    this.showPeriods = true,
   });
 
   final ApiClient api;
-  final Future<Map<String, dynamic>> Function(int) futureFactory;
+  final Future<Map<String, dynamic>> Function(int, {String? period, bool byItem}) futureFactory;
   final String exportKey;
   final String emptyText;
   final Widget Function(BuildContext, Map<String, dynamic>) rowBuilder;
+  final bool showPeriods;
+
+  @override
+  State<_DetailedReportList> createState() => _DetailedReportListState();
+}
+
+class _DetailedReportListState extends State<_DetailedReportList> {
+  String _period = '';
+  bool _byItem = false;
+  int _reloadKey = 0;
 
   @override
   Widget build(BuildContext context) {
+    Future<Map<String, dynamic>> load(int companyId) {
+      // مفتاح التحميل يجبر FutureBuilder على إعادة الجلب عند تغيير الفترة.
+      Future<void>.delayed(Duration.zero).then((_) {});
+      return widget.futureFactory(companyId,
+          period: _period.isEmpty ? null : _period, byItem: _byItem);
+    }
+
     return FutureBuilder<Map<String, dynamic>>(
-      future: futureFactory(AppConfig.companyId),
+      key: ValueKey('$_period-$_byItem-$_reloadKey'),
+      future: load(AppConfig.companyId),
       builder: (context, snapshot) {
+        final header = widget.showPeriods
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final (label, value) in _periodChoices)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: ChoiceChip(
+                                  label: Text(label, style: const TextStyle(fontSize: 12.5)),
+                                  selected: _period == value,
+                                  onSelected: (_) => setState(() => _period = value),
+                                  selectedColor: AppColors.primary.withOpacity(.15),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : const SizedBox.shrink();
+
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
+          return ListView(padding: const EdgeInsets.all(16), children: [header,
+            const Center(child: CircularProgressIndicator()),
+          ]);
         }
         if (snapshot.hasError) {
-          return Center(child: Text('تعذر تحميل التقرير — تأكد من الاتصال وحاول مرة أخرى.'));
+          return ListView(padding: const EdgeInsets.all(16), children: [header,
+            SectionCard(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Column(children: [
+                  const Text('تعذر تحميل التقرير — تأكد من الاتصال وحاول مرة أخرى.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textSecondary)),
+                  const SizedBox(height: 10),
+                  OutlinedButton(
+                    onPressed: () => setState(() => _reloadKey++),
+                    child: const Text('إعادة المحاولة'),
+                  ),
+                ]),
+              ),
+            ),
+          ]);
         }
         final data = snapshot.data!;
         final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
@@ -210,6 +322,7 @@ class _DetailedReportList extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            header,
             SectionCard(
               child: Row(
                 children: [
@@ -219,7 +332,7 @@ class _DetailedReportList extends StatelessWidget {
                             fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.navy)),
                   ),
                   OutlinedButton.icon(
-                    onPressed: () => shareReportExport(context, exportKey),
+                    onPressed: () => shareReportExport(context, widget.exportKey),
                     icon: const Icon(Icons.ios_share, size: 16),
                     label: const Text('تصدير', style: TextStyle(fontSize: 13)),
                     style: OutlinedButton.styleFrom(
@@ -235,14 +348,14 @@ class _DetailedReportList extends StatelessWidget {
               SectionCard(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Text(emptyText, textAlign: TextAlign.center,
+                  child: Text(widget.emptyText, textAlign: TextAlign.center,
                       style: const TextStyle(color: AppColors.textSecondary)),
                 ),
               )
             else
               SectionCard(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                child: Column(children: [for (final r in rows) rowBuilder(context, r)]),
+                child: Column(children: [for (final r in rows) widget.rowBuilder(context, r)]),
               ),
           ],
         );

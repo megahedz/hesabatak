@@ -5,8 +5,9 @@ import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../home/home_shell.dart';
 
-/// المخزون — الأصناف مع رصيدها الحالي وقيمتها بتكلفة المتوسط المرجح،
-/// تنبيه الأصناف المنخفضة/النافدة، وإضافة صنف جديد (مع مخزون افتتاحي).
+/// الأصناف — كتالوج تعريفي بالأصناف/الخدمات اللي بتبيعها: الاسم، الوحدة،
+/// الوصف الحر، سعر الشراء والبيع. في وضع الأصناف (catalog_mode) لا يوجد
+/// جرد كميات — وكل صنف جاهز يُختار مباشرة في فاتورة البيع أو الشراء.
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
 
@@ -19,6 +20,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   List<dynamic> _products = const [];
   bool _loading = true;
   bool _failed = false;
+  bool _catalogMode = false; // وضع الأصناف — من إعدادات الشركة
 
   @override
   void initState() {
@@ -32,10 +34,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
       _failed = false;
     });
     try {
-      final data = await _api.getProducts(AppConfig.companyId);
+      final results = await Future.wait([
+        _api.getProducts(AppConfig.companyId),
+        _api.getSettings(AppConfig.companyId),
+      ]);
       if (!mounted) return;
       setState(() {
-        _products = data;
+        _products = results[0] as List<dynamic>;
+        _catalogMode = (results[1] as Map<String, dynamic>)['catalog_mode'] == true;
         _loading = false;
       });
     } catch (_) {
@@ -53,11 +59,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final name = TextEditingController();
     final sku = TextEditingController();
     final unit = TextEditingController(text: 'قطعة');
+    final description = TextEditingController();
     final purchase = TextEditingController();
     final selling = TextEditingController();
     final opening = TextEditingController();
     final minimum = TextEditingController();
     bool saving = false;
+    final catalog = _catalogMode;
 
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -81,6 +89,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   controller: name,
                   autofocus: true,
                   decoration: const InputDecoration(labelText: 'اسم الصنف *'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: description,
+                  decoration: const InputDecoration(
+                    labelText: 'وصف الصنف (اختياري)',
+                    hintText: 'يُعبّى تلقائيًا في وصف بند الفاتورة عند اختياره',
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -120,31 +136,39 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: opening,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'كمية افتتاحية'),
+                if (!catalog) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: opening,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'كمية افتتاحية'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: minimum,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'حد الطلب الأدنى'),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: minimum,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'حد الطلب الأدنى'),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'لو أدخلت كمية افتتاحية سيُسجَّل مخزونها كمساهمة من رأس المال (تحتاج سعر شراء).',
-                  style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
-                ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'لو أدخلت كمية افتتاحية سيُسجَّل مخزونها كمساهمة من رأس المال (تحتاج سعر شراء).',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    'وضع الأصناف: تعريف فقط بدون جرد كميات — البيع والشراء لا يتأثران برصيد.',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 FilledButton(
                   onPressed: saving
@@ -163,9 +187,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               name: n,
                               sku: sku.text.trim(),
                               unit: unit.text.trim().isEmpty ? 'قطعة' : unit.text.trim(),
+                              description: description.text.trim(),
                               purchasePrice: double.tryParse(purchase.text.trim()) ?? 0,
                               sellingPrice: double.tryParse(selling.text.trim()) ?? 0,
-                              openingStockQty: double.tryParse(opening.text.trim()) ?? 0,
+                              openingStockQty: catalog ? 0 : (double.tryParse(opening.text.trim()) ?? 0),
                               minimumStock: double.tryParse(minimum.text.trim()) ?? 0,
                             );
                             if (sheetCtx.mounted) Navigator.of(sheetCtx).pop(true);
@@ -208,7 +233,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppHeader(title: 'المخزون'),
+      appBar: AppHeader(title: _catalogMode ? 'الأصناف' : 'المخزون'),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
@@ -248,10 +273,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                           style: const TextStyle(
                                               fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.navy)),
                                       Text(
-                                        lowCount > 0 ? '$lowCount صنف تحت حد الطلب' : 'كل الأصناف متوفرة',
+                                        _catalogMode
+                                            ? 'تعريف فقط — بدون جرد كميات'
+                                            : lowCount > 0
+                                                ? '$lowCount صنف تحت حد الطلب'
+                                                : 'كل الأصناف متوفرة',
                                         style: TextStyle(
                                             fontSize: 12,
-                                            color: lowCount > 0 ? AppColors.red : AppColors.textSecondary),
+                                            color: !_catalogMode && lowCount > 0
+                                                ? AppColors.red
+                                                : AppColors.textSecondary),
                                       ),
                                     ],
                                   ),
@@ -289,10 +320,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 AppListTile(
                                   icon: Icons.inventory_2_rounded,
                                   title: p['name'] as String,
-                                  subtitle: 'الرصيد: ${AppFmt.num(_d(p['current_stock'] as String?))} ${p['unit'] ?? ''}'
-                                      ' — القيمة: ${AppFmt.money(_d(p['current_stock'] as String?) * _d(p['purchase_price'] as String?))}',
-                                  trailingLabel: _statusLabel(p),
-                                  trailingColor: _statusColor(p),
+                                  subtitle: _catalogMode
+                                      ? _catalogSubtitle(p)
+                                      : 'الرصيد: ${AppFmt.num(_d(p['current_stock'] as String?))} ${p['unit'] ?? ''}'
+                                          ' — القيمة: ${AppFmt.money(_d(p['current_stock'] as String?) * _d(p['purchase_price'] as String?))}',
+                                  trailingLabel: _catalogMode ? null : _statusLabel(p),
+                                  trailingColor: _catalogMode ? null : _statusColor(p),
                                   trailingChevron: false,
                                 ),
                             ],
@@ -302,6 +335,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                 ),
     );
+  }
+
+  String _catalogSubtitle(Map<String, dynamic> p) {
+    final desc = (p['description'] as String?)?.trim() ?? '';
+    final sell = _d(p['selling_price'] as String?);
+    final unit = (p['unit'] as String?) ?? '';
+    if (desc.isNotEmpty) return desc;
+    if (sell > 0) return 'سعر البيع: ${AppFmt.money(sell)}${unit.isEmpty ? '' : ' / $unit'}';
+    return 'سعر البيع: 0.00';
   }
 
   String? _statusLabel(Map<String, dynamic> p) {

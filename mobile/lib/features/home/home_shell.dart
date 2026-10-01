@@ -32,7 +32,7 @@ class HomeShell extends StatefulWidget {
     ('المصروفات', Icons.account_balance_wallet_rounded),
     ('العملاء', Icons.people_alt_rounded),
     ('الموردون', Icons.storefront_rounded),
-    ('المخزون', Icons.inventory_2_rounded),
+    ('الأصناف', Icons.inventory_2_rounded),
     ('الخزنة والبنك', Icons.savings_rounded),
     ('الأصول الثابتة', Icons.domain_rounded),
     ('التقارير', Icons.bar_chart_rounded),
@@ -105,7 +105,7 @@ class _HomeShellState extends State<HomeShell> {
         return const CustomersScreen();
       case 'الموردون':
         return const SuppliersScreen();
-      case 'المخزون':
+      case 'الأصناف':
         return const InventoryScreen();
       case 'الخزنة والبنك':
         return const TreasuryScreen();
@@ -121,9 +121,9 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-/// Phase 6 (spec §42): shown only when there is something to say — the device
-/// is offline, or writes are queued waiting to sync. Hidden otherwise so the
-/// normal online experience is unchanged.
+///ARCHITECTURE: بياناتك محفوظة على السيرفر السحابي — التطبيق عميل فقط.
+/// اللافتة تظهر عند انقطاع الإنترنت لتوضيح أن العمليات تحتاج اتصالًا،
+/// أو أثناء رفع أي عمليات قديمة متبقية من نسخة سابقة (مرة واحدة فقط).
 class _SyncBanner extends StatelessWidget {
   const _SyncBanner();
 
@@ -149,8 +149,8 @@ class _SyncBanner extends StatelessWidget {
                   Expanded(
                     child: Text(
                       offline
-                          ? 'غير متصل — سيتم رفع التغييرات تلقائيًا عند عودة الاتصال'
-                          : 'جارٍ رفع ${sync.pendingCount} عملية محفوظة…',
+                          ? 'غير متصل — بياناتك محفوظة على السيرفر، والعمليات الجديدة تحتاج إنترنت'
+                          : 'جارٍ رفع ${sync.pendingCount} عملية محفوظة من نسخة سابقة…',
                       style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ),

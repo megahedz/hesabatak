@@ -21,11 +21,15 @@ class SalesInvoiceScreen extends StatefulWidget {
 }
 
 class _InvoiceItem {
-  int? productId;
+  int? productId; // null = بند خدمة/نص حر بدون صنف معرّف
   String name = '';
+  String description = '';
   double quantity = 1;
   double unitPrice = 0;
   double discount = 0;
+  final TextEditingController descController = TextEditingController();
+
+  void dispose() => descController.dispose();
 
   /// السعر الفعلي بعد خصم الخصم من البند — هذا ما يُرسل للسيرفر لأنه
   /// يتحقق أن إجمالي البنود (كمية × سعر) يساوي إجمالي الفاتورة.
@@ -66,6 +70,9 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
   @override
   void dispose() {
     _dateController.dispose();
+    for (final i in _items) {
+      i.dispose();
+    }
     super.dispose();
   }
 
@@ -129,14 +136,22 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
       _toast('الفاتورة الآجلة تحتاج اختيار عميل');
       return;
     }
+    // كل بند لازم يبقى له صنف معرّف أو وصف خدمة مكتوب يدويًا.
+    for (final i in _items) {
+      if (i.lineTotal > 0 && i.productId == null && i.description.trim().isEmpty) {
+        _toast('اكتب وصف الخدمة في كل بند بدون صنف (أو اختر صنفًا من القائمة)');
+        return;
+      }
+    }
     setState(() => _saving = true);
     try {
       final items = _items
-          .where((i) => i.productId != null && i.lineTotal > 0)
+          .where((i) => i.lineTotal > 0 && (i.productId != null || i.description.trim().isNotEmpty))
           .map((i) => {
                 'product_id': i.productId,
                 'quantity': i.quantity,
                 'unit_price': i.effectivePrice,
+                if (i.description.trim().isNotEmpty) 'description': i.description.trim(),
               })
           .toList();
       final res = await _api.postSale(
@@ -330,7 +345,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
                   child: const Row(
                     children: [
                       SizedBox(width: 36, child: Text('', style: TextStyle(fontSize: 11))),
-                      Expanded(flex: 4, child: Text('الصنف', style: _headerStyle)),
+                      Expanded(flex: 4, child: Text('الصنف / الخدمة', style: _headerStyle)),
                       Expanded(flex: 2, child: Text('الكمية', style: _headerStyle, textAlign: TextAlign.center)),
                       Expanded(flex: 3, child: Text('السعر', style: _headerStyle, textAlign: TextAlign.center)),
                       Expanded(flex: 3, child: Text('الإجمالي', style: _headerStyle, textAlign: TextAlign.center)),
@@ -339,6 +354,11 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
                 ),
                 const SizedBox(height: 8),
                 for (var i = 0; i < _items.length; i++) _itemRow(_items[i], i),
+                const SizedBox(height: 4),
+                Text(
+                  'اختر صنفًا من القائمة، أو اتركه فارغًا واكتب وصف الخدمة يدويًا — وكل بند يقبل وصفًا يظهر في الفاتورة.',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                ),
               ],
             ),
           ),
@@ -434,67 +454,96 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
 
   Widget _itemRow(_InvoiceItem item, int index) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // حذف الصف (يمين الصف في RTL كالمرجع)
-          SizedBox(
-            width: 36,
-            child: IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              icon: const Icon(Icons.delete_outline, color: AppColors.red, size: 20),
-              onPressed: _items.length > 1
-                  ? () => setState(() => _items.removeAt(index))
-                  : null,
-            ),
+          Row(
+            children: [
+              // حذف الصف (يمين الصف في RTL كالمرجع)
+              SizedBox(
+                width: 36,
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.delete_outline, color: AppColors.red, size: 20),
+                  onPressed: _items.length > 1
+                      ? () => setState(() {
+                            _items.removeAt(index).dispose();
+                          })
+                      : null,
+                ),
+              ),
+              Expanded(
+                flex: 4,
+                child: DropdownButtonFormField<int>(
+                  value: item.productId,
+                  isDense: true,
+                  hint: const Text('اختر صنفًا…', style: TextStyle(fontSize: 12.5)),
+                  decoration: const InputDecoration(
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                  items: _products
+                      .map((p) => DropdownMenuItem<int>(
+                            value: p['id'] as int,
+                            child: Text(p['name'] as String,
+                                style: const TextStyle(fontSize: 12.5),
+                                overflow: TextOverflow.ellipsis),
+                          ))
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() {
+                      item.productId = v;
+                      final p = _products.firstWhere(
+                        (p) => p['id'] == v,
+                        orElse: () => null,
+                      );
+                      if (p != null) {
+                        item.name = p['name'] as String;
+                        item.unitPrice = double.parse(p['selling_price'] as String);
+                      }
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 2,
+                child: _numField(item.quantity, (v) => item.quantity = v),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 3,
+                child: _numField(item.unitPrice, (v) => item.unitPrice = v),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  AppFmt.num(item.lineTotal),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            flex: 4,
-            child: DropdownButtonFormField<int>(
-              value: item.productId,
-              isDense: true,
-              hint: const Text('اختر', style: TextStyle(fontSize: 12.5)),
-              decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
-              items: _products
-                  .map((p) => DropdownMenuItem<int>(
-                        value: p['id'] as int,
-                        child: Text(p['name'] as String,
-                            style: const TextStyle(fontSize: 12.5), overflow: TextOverflow.ellipsis),
-                      ))
-                  .toList(),
-              onChanged: (v) {
-                setState(() {
-                  item.productId = v;
-                  final p = _products.firstWhere(
-                    (p) => p['id'] == v,
-                    orElse: () => null,
-                  );
-                  if (p != null) {
-                    item.name = p['name'] as String;
-                    item.unitPrice = double.parse(p['selling_price'] as String);
-                  }
-                });
-              },
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 2,
-            child: _numField(item.quantity, (v) => item.quantity = v),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 3,
-            child: _numField(item.unitPrice, (v) => item.unitPrice = v),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 3,
-            child: Text(
-              AppFmt.num(item.lineTotal),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy),
+          // وصف البند — إجباري للبنود بدون صنف معرّف (خدمة)، اختياري لغيرها.
+          Padding(
+            padding: const EdgeInsets.only(top: 6, right: 36),
+            child: TextField(
+              controller: item.descController,
+              style: const TextStyle(fontSize: 12.5),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: item.productId == null
+                    ? 'وصف الخدمة (إجباري) — مثال: إعداد عقد إيجار'
+                    : 'وصف إضافي (اختياري)',
+                hintStyle: TextStyle(
+                    fontSize: 11.5,
+                    color: item.productId == null ? AppColors.amber : AppColors.textSecondary),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onChanged: (v) => item.description = v,
             ),
           ),
         ],

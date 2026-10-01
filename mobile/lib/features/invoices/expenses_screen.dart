@@ -38,6 +38,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   ];
 
   Map<String, dynamic>? _report;
+  String _period = ''; // '' = كل الفترات | today | month | year
 
   @override
   void initState() {
@@ -47,7 +48,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   Future<void> _load() async {
     try {
-      final data = await _api.getExpensesReport(AppConfig.companyId);
+      final data = await _api.getExpensesReport(AppConfig.companyId,
+          period: _period.isEmpty ? null : _period);
       if (!mounted) return;
       setState(() => _report = data);
     } catch (_) {
@@ -75,6 +77,18 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 title: Text(a.name),
                 onTap: () => Navigator.of(ctx).pop(a),
               ),
+            // «مصروف مخصص»: اسم حر — ينشئ حسابًا دائمًا في دليل الحسابات.
+            ListTile(
+              leading: const IconTile(
+                  icon: Icons.edit_note_rounded, background: AppColors.greyTint,
+                  color: AppColors.navy, size: 40),
+              title: const Text('مصروف مخصص (اكتب الاسم)',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              onTap: () => Navigator.of(ctx).pop(
+                const _ExpenseAccount('custom', 'مصروف مخصص', Icons.edit_note_rounded,
+                    AppColors.greyTint, AppColors.navy),
+              ),
+            ),
           ],
         ),
       ),
@@ -82,7 +96,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     if (picked == null || !mounted) return;
 
     // نفس نموذج الإدخال السريع الموجود — لكن بحساب مصروف محدد.
+    final isCustom = picked.code == 'custom';
     final amountController = TextEditingController();
+    final labelController = TextEditingController();
     String method = 'cash';
     bool saving = false;
     final ok = await showModalBottomSheet<bool>(
@@ -99,12 +115,24 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('مصروف: ${picked.name}',
+              Text(isCustom ? 'مصروف مخصص' : 'مصروف: ${picked.name}',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.navy)),
               const SizedBox(height: 14),
+              if (isCustom) ...[
+                TextField(
+                  controller: labelController,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'اسم المصروف *',
+                    hintText: 'مثال: اشتراكات إنترنت، شحن طلبات، ضيافة…',
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               TextField(
                 controller: amountController,
-                autofocus: true,
+                autofocus: !isCustom,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'المبلغ', suffixText: 'ج.م'),
               ),
@@ -134,13 +162,21 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                               const SnackBar(content: Text('من فضلك أدخل مبلغًا صحيحًا')));
                           return;
                         }
+                        if (isCustom && labelController.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('اكتب اسم المصروف المخصص')));
+                          return;
+                        }
                         setSheetState(() => saving = true);
                         try {
                           await _api.postExpense(
                             companyId: AppConfig.companyId,
                             amount: amount,
                             method: method,
-                            expenseAccountCode: picked.code,
+                            // المخصص يُنشئ حسابًا دائمًا على السيرفر باسمه الحر؛
+                            // الجاهز يُرحّل على حسابه المعروف.
+                            customLabel: isCustom ? labelController.text.trim() : null,
+                            expenseAccountCode: isCustom ? null : picked.code,
                           );
                           if (sheetCtx.mounted) Navigator.of(sheetCtx).pop(true);
                         } catch (_) {
@@ -190,6 +226,34 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
           children: [
+            // ===== فترة التقرير =====
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final (label, value) in const [
+                    ('كل الفترات', ''),
+                    ('اليوم', 'today'),
+                    ('هذا الشهر', 'month'),
+                    ('هذه السنة', 'year'),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: ChoiceChip(
+                        label: Text(label, style: const TextStyle(fontSize: 12.5)),
+                        selected: _period == value,
+                        onSelected: (_) {
+                          setState(() => _period = value);
+                          _load();
+                        },
+                        selectedColor: AppColors.primary.withOpacity(.15),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+
             // ===== إجمالي المصروفات =====
             SectionCard(
               child: Row(
@@ -226,7 +290,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
                     )
-                  else
+                  else ...[
                     for (final a in _accounts)
                       if ((byCode[a.code] ?? 0) > 0)
                         Padding(
@@ -246,6 +310,29 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                             ],
                           ),
                         ),
+                    // المصروفات المخصصة (أكواد 67xx ينشئها المستخدم باسم حر).
+                    for (final r in rows)
+                      if ((r['code'] as String).startsWith('67'))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              const IconTile(
+                                  icon: Icons.edit_note_rounded, background: AppColors.greyTint,
+                                  color: AppColors.navy, size: 40),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(r['name_ar'] as String,
+                                    style: const TextStyle(
+                                        fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.navy)),
+                              ),
+                              Text(AppFmt.money(double.tryParse(r['amount'] as String? ?? '0') ?? 0),
+                                  style: const TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                            ],
+                          ),
+                        ),
+                  ],
                 ],
               ),
             ),

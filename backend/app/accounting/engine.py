@@ -20,6 +20,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.journal import JournalEntry, JournalEntryLine
+from app.models.operations import CashTransaction, BankTransaction
 from app.accounting.chart_of_accounts import get_account
 from app.models.accounts import SystemAccountCode
 
@@ -103,7 +104,42 @@ class AccountingService:
                 supplier_id=line.supplier_id,
             ))
         db.flush()
+        AccountingService._mirror_cash_bank(db, company_id=company_id, entry=entry,
+                                            lines=lines, entry_date=entry_date)
+        db.flush()
         return entry
+
+    # ------------------------------------------------------------------
+    # Cash/Bank transaction ledgers (spec: cash_transactions / bank_transactions
+    # as real tables). Every posted entry that touches account 1100 (cash) or
+    # 1200 (bank) gets a reflection row here — FK-linked to the journal entry,
+    # derived from the same balanced lines, so the ledgers can never disagree
+    # with the accounting truth.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _mirror_cash_bank(db: Session, *, company_id: int, entry: JournalEntry,
+                          lines: list[Line], entry_date: date) -> None:
+        for line in lines:
+            if line.debit:
+                direction, amount = "in", line.debit
+            elif line.credit:
+                direction, amount = "out", line.credit
+            else:
+                continue
+            if line.account_code == SystemAccountCode.CASH.value:
+                db.add(CashTransaction(
+                    company_id=company_id, journal_entry_id=entry.id,
+                    txn_date=entry_date, direction=direction, amount=amount,
+                    description=entry.description,
+                    reference_type=entry.reference_type,
+                ))
+            elif line.account_code == SystemAccountCode.BANK.value:
+                db.add(BankTransaction(
+                    company_id=company_id, journal_entry_id=entry.id,
+                    txn_date=entry_date, direction=direction, amount=amount,
+                    description=entry.description,
+                    reference_type=entry.reference_type,
+                ))
 
     @staticmethod
     def reverse_journal_entry(db: Session, *, company_id: int, original_entry: JournalEntry,
@@ -341,3 +377,47 @@ class AccountingService:
                 Line(account_code=from_code, credit=amount),
             ],
         )
+
+
+def rebuild_cash_bank_mirrors(db: Session, *, company_id: int) -> int:
+    """Rebuild the company's cash/bank reflection rows from the journal itself
+    (the single source of truth). Used after a backup restore, where entries
+    are re-inserted directly instead of flowing through AccountingService._post.
+    Returns the number of mirror rows created."""
+    from app.models.accounts import Account
+    from app.models.journal import JournalEntry, JournalEntryLine
+
+    db.query(CashTransaction).filter(CashTransaction.company_id == company_id).delete(synchronize_session=False)
+    db.query(BankTransaction).filter(BankTransaction.company_id == company_id).delete(synchronize_session=False)
+
+    code_by_id = {a.id: a.code for a in db.query(Account).filter(Account.company_id == company_id).all()}
+    rows = (
+        db.query(JournalEntryLine, JournalEntry)
+        .join(JournalEntry, JournalEntry.id == JournalEntryLine.journal_entry_id)
+        .filter(JournalEntry.company_id == company_id)
+        .order_by(JournalEntry.id, JournalEntryLine.id)
+        .all()
+    )
+    created = 0
+    for line, entry in rows:
+        code = code_by_id.get(line.account_id)
+        if code == SystemAccountCode.CASH.value:
+            model = CashTransaction
+        elif code == SystemAccountCode.BANK.value:
+            model = BankTransaction
+        else:
+            continue
+        if line.debit:
+            direction, amount = "in", line.debit
+        elif line.credit:
+            direction, amount = "out", line.credit
+        else:
+            continue
+        db.add(model(
+            company_id=company_id, journal_entry_id=entry.id,
+            txn_date=entry.entry_date, direction=direction, amount=amount,
+            description=entry.description, reference_type=entry.reference_type,
+        ))
+        created += 1
+    db.flush()
+    return created
