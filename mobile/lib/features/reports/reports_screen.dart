@@ -118,6 +118,31 @@ class _SalesTab extends StatelessWidget {
   }
 }
 
+class _PurchasesTab extends StatelessWidget {
+  const _PurchasesTab({required this.api});
+  final ApiClient api;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DetailedReportList(
+      api: api,
+      futureFactory: api.getPurchasesReport,
+      exportKey: 'purchases',
+      emptyText: 'لا توجد فواتير شراء بعد — سجّل أول عملية شراء من الرئيسية',
+      rowBuilder: (context, r) {
+        final total = double.parse(r['total'] as String);
+        return _ReportTile(
+          icon: Icons.shopping_cart_rounded,
+          title: r['supplier_name'] as String? ?? 'مورد نقدي',
+          subtitle: '${r['invoice_number']} — ${r['invoice_date']}'
+              '${(r['is_credit'] as bool) ? ' — آجل' : ''}',
+          value: '${AppFmt.num(total)} ج.م',
+        );
+      },
+    );
+  }
+}
+
 /// «المبيعات بالصنف»: تجميع كل بند بيع على أساس الصنف/الخدمة — بالعدد
 /// (الكمية) وإجمالي القيمة، نفس منطق المشتريات، مع فترات يومي/شهري/سنوي.
 class _SalesByItemTab extends StatefulWidget {

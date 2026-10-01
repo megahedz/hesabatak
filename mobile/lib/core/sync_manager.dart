@@ -94,7 +94,7 @@ class SyncManager extends ChangeNotifier {
   }
 
   /// Legacy alias for the one-time drain (the old banner button called it).
-  Future<int> flush() => drainLegacyQueue();
+  Future<void> flush() => drainLegacyQueue();
 
   @override
   void dispose() {
