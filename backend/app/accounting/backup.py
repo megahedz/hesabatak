@@ -130,6 +130,8 @@ def export_backup(db: Session, company_id: int) -> dict:
             "fiscal_year_start_month": company.fiscal_year_start_month,
             "vat_enabled": bool(company.vat_enabled), "vat_rate": str(company.vat_rate),
             "inventory_enabled": bool(company.inventory_enabled),
+            "tax_card_no": company.tax_card_no,
+            "withholding_enabled": bool(company.withholding_enabled),
         },
         "financial_years": [
             {"id": f.id, "name": f.name, "start_date": str(f.start_date),
@@ -174,7 +176,10 @@ def export_backup(db: Session, company_id: int) -> dict:
                      ("invoice_date", "invoice_date"), ("customer_id", "customer_id"),
                      ("payment_method", "payment_method"), ("is_credit", "is_credit"),
                      ("subtotal", "subtotal"), ("vat_amount", "vat_amount"),
-                     ("total", "total"), ("journal_entry_id", "journal_entry_id")])
+                     ("total", "total"), ("journal_entry_id", "journal_entry_id"),
+                     ("withholding_kind", "withholding_kind"),
+                     ("withholding_rate", "withholding_rate"),
+                     ("withholding_amount", "withholding_amount")])
             for i in sales
         ],
         "sales_invoice_items": [
@@ -189,7 +194,10 @@ def export_backup(db: Session, company_id: int) -> dict:
                      ("invoice_date", "invoice_date"), ("supplier_id", "supplier_id"),
                      ("payment_method", "payment_method"), ("is_credit", "is_credit"),
                      ("subtotal", "subtotal"), ("vat_amount", "vat_amount"),
-                     ("total", "total"), ("journal_entry_id", "journal_entry_id")])
+                     ("total", "total"), ("journal_entry_id", "journal_entry_id"),
+                     ("withholding_kind", "withholding_kind"),
+                     ("withholding_rate", "withholding_rate"),
+                     ("withholding_amount", "withholding_amount")])
             for i in purchases
         ],
         "purchase_invoice_items": [
@@ -447,6 +455,9 @@ def _restore_in_session(db: Session, company_id: int, payload: dict) -> int:
             subtotal=_parse_dec(i.get("subtotal", 0), "subtotal"),
             vat_amount=_parse_dec(i.get("vat_amount", 0), "vat_amount"),
             total=_parse_dec(i.get("total", 0), "total"),
+            withholding_kind=i.get("withholding_kind"),
+            withholding_rate=_parse_dec(i.get("withholding_rate", 0), "withholding_rate"),
+            withholding_amount=_parse_dec(i.get("withholding_amount", 0), "withholding_amount"),
             journal_entry_id=int(i["journal_entry_id"]) if i.get("journal_entry_id") is not None else None,
         ))
     for i in payload.get("sales_invoice_items", []):
@@ -470,6 +481,9 @@ def _restore_in_session(db: Session, company_id: int, payload: dict) -> int:
             subtotal=_parse_dec(i.get("subtotal", 0), "subtotal"),
             vat_amount=_parse_dec(i.get("vat_amount", 0), "vat_amount"),
             total=_parse_dec(i.get("total", 0), "total"),
+            withholding_kind=i.get("withholding_kind"),
+            withholding_rate=_parse_dec(i.get("withholding_rate", 0), "withholding_rate"),
+            withholding_amount=_parse_dec(i.get("withholding_amount", 0), "withholding_amount"),
             journal_entry_id=int(i["journal_entry_id"]) if i.get("journal_entry_id") is not None else None,
         ))
     for i in payload.get("purchase_invoice_items", []):
@@ -546,6 +560,10 @@ def _restore_in_session(db: Session, company_id: int, payload: dict) -> int:
 
     company.vat_enabled = bool(payload["company"].get("vat_enabled", company.vat_enabled))
     company.inventory_enabled = bool(payload["company"].get("inventory_enabled", company.inventory_enabled))
+    if "tax_card_no" in payload["company"]:
+        company.tax_card_no = payload["company"].get("tax_card_no") or None
+    if "withholding_enabled" in payload["company"]:
+        company.withholding_enabled = bool(payload["company"].get("withholding_enabled"))
 
     # ---- cloud-architecture tables ----
     # Financial years: re-create from the file (or the current one if the file predates them).

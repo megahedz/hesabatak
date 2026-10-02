@@ -25,7 +25,6 @@ from typing import Any, Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.base import utcnow
 from app.accounting.detailed_reports import (
     sales_report, purchases_report, inventory_report, expense_report,
 )
@@ -57,18 +56,6 @@ def _x(v: Any) -> str:
 METHOD_AR = {"cash": "خزينة", "bank": "بنك"}
 
 
-def _pdf_text(s: str) -> str:
-    """
-    Keep Arabic readable in simple PDF text runs:
-    parentheses are mirrored by bidi algorithms and end up reversed inside an
-    RTL run, so replace them with a dash form; collapse the extra spaces.
-    """
-    s = s.replace("(", " - ").replace(")", "")
-    while "  " in s:
-        s = s.replace("  ", " ")
-    return s.strip()
-
-
 def _col_letter(idx: int) -> str:
     """0 → A, 25 → Z, 26 → AA ..."""
     letters = ""
@@ -85,109 +72,22 @@ def _col_letter(idx: int) -> str:
 def build_pdf(title: str, subtitle: Optional[str], headers: list[str],
               rows: list[list[Any]], totals: Optional[list[tuple[str, Any]]] = None) -> bytes:
     """
-    A4 portrait, RTL single-table report:
-    header band (brand + title + date), column header row (filled), zebra-free
-    clean grid, and a totals footer. Rows must already be cell values
-    (Decimal/str/int); number cells are right-aligned with thousands format.
+    تقرير PDF بمقاس A4 واتجاه من اليمين لليسار.
+
+    الرسم يتم في `app/accounting/pdf.py` بخط عربي مضمّن (Noto Naskh Arabic)
+    بعد تشكيل النص وترتيبه المرئي. المولّد القديم كان يكتب نص PDF بترميز
+    latin-1 مباشرة، فتتحوّل كل الحروف العربية إلى «؟» في الملف الناتج.
     """
     if not headers:
         raise ExportError("لا توجد أعمدة للتصدير.")
+    from app.accounting.pdf import build_report_pdf
+    try:
+        return build_report_pdf(title, subtitle, headers, rows, totals)
+    except ValueError as e:
+        raise ExportError(str(e))
 
-    def num(v: Any) -> bool:
-        return isinstance(v, (int, Decimal)) and not isinstance(v, bool)
 
-    # ---- geometry (A4 595x842pt) ----
-    W = 595.27
-    margin = 30.0
-    table_w = W - 2 * margin
-    row_h = 17.0
-    head_h = 58.0
-    sub_h = 14.0 if subtitle else 0.0
-    body_rows = len(rows)
-    total_rows = len(totals or [])
-    table_h = row_h + body_rows * row_h + (total_rows * row_h + 6.0 if total_rows else 0.0)
-    page_h = head_h + sub_h + table_h + 2 * margin + 24.0
 
-    ops: list[str] = []
-
-    def esc_txt(v: Any) -> str:
-        return _pdf_text(_cell_str(v)).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-
-    # ---- column widths proportional to content ----
-    estimates = []
-    for ci, h in enumerate(headers):
-        m = len(_cell_str(h))
-        for r in rows:
-            if ci < len(r):
-                m = max(m, len(_cell_str(r[ci])))
-        estimates.append(max(m, len(_cell_str(h))) + 4)
-    total_est = sum(estimates) or 1
-    widths = [max(34.0, min(200.0, table_w * e / total_est)) for e in estimates]
-    scale = table_w / sum(widths)
-    widths = [w * scale for w in widths]
-    xs = [margin]
-    for w in widths:
-        xs.append(xs[-1] + w)
-
-    def cell(ci: int, v: Any, *, bold: bool, fill: Optional[tuple], y: float, pad: float = 5.0):
-        right = xs[ci + 1] - pad
-        text = esc_txt(v)
-        size = 10 if bold else 9
-        r, g, b = (0.10, 0.20, 0.18) if bold else (0.13, 0.13, 0.13)
-        if fill:
-            fr, fg, fb = fill
-            ops.append(f"{fr} {fg} {fb} rg {xs[ci]:.2f} {y:.2f} {widths[ci]:.2f} {row_h:.2f} re f")
-        ops.append(f"BT /F1 {size} Tf {r} {g} {b} rg 1 0 0 1 {right:.2f} {y + pad - 1:.2f} Tm ({text}) Tj ET")
-        ops.append(f"0.78 0.82 0.83 RG 0.6 w {xs[ci]:.2f} {y:.2f} m {xs[ci]:.2f} {y + row_h:.2f} l S")
-        ops.append(f"{xs[ci]:.2f} {y:.2f} {widths[ci]:.2f} {row_h:.2f} re S")
-
-    y = page_h - margin - head_h
-
-    # ---- header band ----
-    ops.append(f"0.059 0.431 0.361 rg 0 {page_h - head_h:.2f} {W:.2f} {head_h:.2f} re f")
-    ops.append(f"BT /F1 16 Tf 1 1 1 rg 1 0 0 1 {W - margin:.2f} {page_h - 34:.2f} Tm ({esc_txt(title)}) Tj ET")
-    stamp = utcnow().strftime("%Y-%m-%d %H:%M")
-    ops.append(f"BT /F1 9 Tf 0.85 0.92 0.90 rg 1 0 0 1 {W - margin:.2f} {page_h - 18:.2f} Tm ("
-               f"{esc_txt('حساباتك — حسابات مشروعك ببساطة — ' + stamp)}) Tj ET")
-    if subtitle:
-        ops.append(f"BT /F1 10 Tf 0.25 0.30 0.29 rg 1 0 0 1 {W - margin:.2f} {y - 8:.2f} Tm ({esc_txt(subtitle)}) Tj ET")
-        y -= sub_h
-
-    # ---- table header row ----
-    y -= row_h
-    for ci, h in enumerate(headers):
-        cell(ci, h, bold=True, fill=(0.59, 0.78, 0.73), y=y)
-
-    # ---- body ----
-    for r in rows:
-        y -= row_h
-        for ci in range(len(headers)):
-            v = r[ci] if ci < len(r) else ""
-            cell(ci, f"{v:,.2f}" if num(v) else v, bold=False, fill=None, y=y)
-
-    # ---- totals footer ----
-    if total_rows:
-        y -= 6.0
-        ops.append(f"0 0 0 RG 1.1 w {margin:.2f} {y:.2f} m {margin + table_w:.2f} {y:.2f} l S")
-        last_ci = len(headers) - 1
-        for label, value in totals:
-            y -= row_h
-            # label right-aligned just before the value column, value in the last column
-            ops.append(f"BT /F1 10 Tf 0.10 0.20 0.18 rg 1 0 0 1 {xs[last_ci] - 5:.2f} {y + 4:.2f} "
-                       f"Tm ({esc_txt(label)}) Tj ET")
-            cell(last_ci, value, bold=True, fill=(0.91, 0.95, 0.94), y=y)
-
-    stream = "\n".join(ops).encode("latin-1", errors="replace")
-    objects = [
-        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-        "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-        "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.27 841.89] "
-        "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
-        "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
-        f"5 0 obj\n<< /Length {len(stream)} >>\nstream\n".encode("latin-1") + stream + b"\nendstream\nendobj\n",
-    ]
-    head = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n" + "".join(o for o in objects[:4]).encode("latin-1")
-    return head + objects[4] + b"trailer\n<< /Size 6 /Root 1 0 R >>\n%%EOF\n"
 
 
 # ======================================================================

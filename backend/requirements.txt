@@ -8,3 +8,7 @@ passlib[bcrypt]
 bcrypt==4.0.1
 python-multipart
 psycopg2-binary
+# PDF عربي حقيقي (تقارير + إشعار/شهادة خصم قانون 91/2005):
+reportlab
+arabic-reshaper
+python-bidi

@@ -31,6 +31,10 @@ class SalesInvoice(Base, TimestampMixin, CompanyScopedMixin):
     total = Column(Numeric(18, 2), nullable=False)
     status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.CONFIRMED)
     journal_entry_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=True)
+    # ضريبة الخصم وفق قانون 91 لسنة 2005 — تُخصم من المبلغ قبل ض.ق.م.
+    withholding_kind = Column(String(20), nullable=True)      # supply / service / consult
+    withholding_rate = Column(Numeric(5, 2), nullable=False, default=0)   # 1 / 3 / 5
+    withholding_amount = Column(Numeric(18, 2), nullable=False, default=0)
 
     __table_args__ = (
         UniqueConstraint("company_id", "invoice_number", name="uq_sales_invoice_number_per_company"),
@@ -64,6 +68,10 @@ class PurchaseInvoice(Base, TimestampMixin, CompanyScopedMixin):
     total = Column(Numeric(18, 2), nullable=False)
     status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.CONFIRMED)
     journal_entry_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=True)
+    # ضريبة الخصم: على الشراء نخصمها من المورد ونسلّمه شهادة خصم.
+    withholding_kind = Column(String(20), nullable=True)      # supply / service / consult
+    withholding_rate = Column(Numeric(5, 2), nullable=False, default=0)
+    withholding_amount = Column(Numeric(18, 2), nullable=False, default=0)
 
     __table_args__ = (
         UniqueConstraint("company_id", "invoice_number", name="uq_purchase_invoice_number_per_company"),

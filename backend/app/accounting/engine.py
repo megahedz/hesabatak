@@ -172,12 +172,16 @@ class AccountingService:
         db: Session, *, company_id: int, entry_date: date,
         amount: Decimal, is_credit: bool, method: str = "cash",
         vat_amount: Decimal = Decimal("0"), cogs_amount: Optional[Decimal] = None,
+        withholding_amount: Decimal = Decimal("0"),
         customer_id: Optional[int] = None,
         reference_id: Optional[int] = None, description: str = "بيع",
     ) -> JournalEntry:
         """
         amount: the sale value BEFORE VAT (i.e. Sales revenue amount).
-        The customer/cash side is debited for amount + vat_amount.
+        The customer/cash side is debited for amount + vat_amount - withholding.
+        withholding_amount: ضريبة الخصم (قانون 91/2005) التي يخصمها العميل عند
+        السداد — تُقيَّد مدينًا في حساب «ضريبة خصم تحت الحساب» (1360) لأنها
+        رصيد فصل ضريبي مستحق من هيئة الضرائب، لا مصروف.
         A credit sale (بيع آجل) must always name a customer_id — you can't owe
         money to "no one" on the books, even if the UI made it optional.
         """
@@ -186,16 +190,22 @@ class AccountingService:
 
         amount = money(amount)
         vat_amount = money(vat_amount)
+        withholding_amount = money(withholding_amount)
         receivable_side = SystemAccountCode.ACCOUNTS_RECEIVABLE.value if is_credit else (
             SystemAccountCode.BANK.value if method == "bank" else SystemAccountCode.CASH.value
         )
         total_owed = amount + vat_amount
+        if withholding_amount > total_owed:
+            raise AccountingError("ضريبة الخصم أكبر من إجمالي الفاتورة.")
 
         lines = [
-            Line(account_code=receivable_side, debit=total_owed,
+            Line(account_code=receivable_side, debit=total_owed - withholding_amount,
                  customer_id=customer_id if is_credit else None),
             Line(account_code=SystemAccountCode.SALES_REVENUE.value, credit=amount),
         ]
+        if withholding_amount > 0:
+            lines.insert(1, Line(account_code=SystemAccountCode.WITHHOLDING_TAX_RECEIVABLE.value,
+                                 debit=withholding_amount))
         if vat_amount > 0:
             lines.append(Line(account_code=SystemAccountCode.OUTPUT_VAT_PAYABLE.value, credit=vat_amount))
 
@@ -222,8 +232,8 @@ class AccountingService:
     @staticmethod
     def create_purchase(
         db: Session, *, company_id: int, entry_date: date,
-        amount: Decimal, is_credit: bool, method: str = "cash",
-        vat_amount: Decimal = Decimal("0"), goes_to_inventory: bool = False,
+        amount: Decimal, is_credit: bool, method: str = "cash",        vat_amount: Decimal = Decimal("0"), goes_to_inventory: bool = False,
+        withholding_amount: Decimal = Decimal("0"),
         supplier_id: Optional[int] = None,
         reference_id: Optional[int] = None, description: str = "شراء",
     ) -> JournalEntry:
@@ -232,17 +242,25 @@ class AccountingService:
 
         amount = money(amount)
         vat_amount = money(vat_amount)
+        withholding_amount = money(withholding_amount)
         payable_side = SystemAccountCode.ACCOUNTS_PAYABLE.value if is_credit else (
             SystemAccountCode.BANK.value if method == "bank" else SystemAccountCode.CASH.value
         )
         debit_account = SystemAccountCode.INVENTORY.value if goes_to_inventory else SystemAccountCode.COST_OF_GOODS_SOLD.value
         total_owed = amount + vat_amount
+        if withholding_amount > total_owed:
+            raise AccountingError("ضريبة الخصم أكبر من إجمالي الفاتورة.")
 
         lines = [Line(account_code=debit_account, debit=amount)]
         if vat_amount > 0:
             lines.append(Line(account_code=SystemAccountCode.INPUT_VAT_RECEIVABLE.value, debit=vat_amount))
-        lines.append(Line(account_code=payable_side, credit=total_owed,
-                           supplier_id=supplier_id if is_credit else None))
+        # نخصم الضريبة من المورد: ندفع له (total - wh) ونقيّد الفرق دائنًا
+        # في «ضريبة خصم مستحقة» (2160) تُسدَّد للهيئة لاحقًا.
+        lines.append(Line(account_code=payable_side, credit=total_owed - withholding_amount,
+                          supplier_id=supplier_id if is_credit else None))
+        if withholding_amount > 0:
+            lines.append(Line(account_code=SystemAccountCode.WITHHOLDING_TAX_PAYABLE.value,
+                              credit=withholding_amount))
 
         return AccountingService._post(
             db, company_id=company_id, entry_date=entry_date, reference_type="purchase",

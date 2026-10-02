@@ -5,9 +5,13 @@ import '../../core/app_config.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../home/home_shell.dart';
+import '../reports/export_service.dart';
 
 /// فاتورة مشتريات — نفس تصميم فاتورة المبيعات (نظام موحد) مع المورد بدل
 /// العميل، والأسعار شرائية (تدخل المخزون بالمتوسط المرجح تلقائيًا).
+///
+/// ضريبة الخصم (قانون 91 لسنة 2005): 1% توريدات / 3% خدمات / 5% استشارات —
+/// نخصمها من المورد عند السداد ونُسلّمه «شهادة خصم» PDF بعد الحفظ.
 class PurchaseInvoiceScreen extends StatefulWidget {
   const PurchaseInvoiceScreen({super.key});
 
@@ -40,6 +44,11 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
   final List<_Item> _items = [_Item()];
   double _paid = 0;
   bool _saving = false;
+  // ضريبة الخصم (قانون 91/2005): null = مطفأة، وإلا 'supply'|'service'|'consult'
+  String? _withholdingKind;
+  bool _withholdingEnabled = false;
+  static const _whLabels = {'supply': 'توريدات 1%', 'service': 'خدمات 3%', 'consult': 'استشارات 5%'};
+  static const _whRates = {'supply': 1.0, 'service': 3.0, 'consult': 5.0};
 
   @override
   void initState() {
@@ -70,12 +79,15 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
         _products = results[1] as List<dynamic>;
         final settings = results[2] as Map<String, dynamic>;
         _vatRate = settings['vat_enabled'] == true ? double.parse(settings['vat_rate'] as String) : 0.0;
+        _withholdingEnabled = settings['withholding_enabled'] == true;
       });
     } catch (_) {}
   }
 
   double get _subtotal => double.parse(_items.fold<double>(0, (s, i) => s + i.lineTotal).toStringAsFixed(2));
   double get _vat => _subtotal * _vatRate / 100;
+  double get _withholding =>
+      _withholdingKind == null ? 0 : _subtotal * (_whRates[_withholdingKind] ?? 0) / 100;
   double get _total => _subtotal + _vat;
   double get _remaining => (_total - _paid).clamp(0, double.infinity);
 
@@ -132,11 +144,18 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
         vatAmount: double.parse(_vat.toStringAsFixed(2)),
         goesToInventory: items.isNotEmpty,
         items: items.isEmpty ? null : items,
+        withholdingKind: _withholdingKind,
+        withholdingRate: _withholdingKind == null ? null : _whRates[_withholdingKind!],
       );
       final num = res['invoice_number'];
+      final invoiceId = res['invoice_id'] as int?;
       if (!mounted) return;
-      _toast(num == null ? 'تم الحفظ وسيُرفع تلقائيًا عند عودة الاتصال' : 'تم حفظ الفاتورة رقم $num');
       Navigator.of(context).maybePop();
+      _toast(num == null ? 'تم الحفظ وسيُرفع تلقائيًا عند عودة الاتصال' : 'تم حفظ الفاتورة رقم $num');
+      // نخصمنا الضريبة من المورد → شارك «شهادة الخصم» فورًا بعد الحفظ.
+      if (invoiceId != null && _withholdingKind != null && _withholding > 0) {
+        await _shareWithholdingCertificate(invoiceId);
+      }
     } on ApiException catch (e) {
       _toast(e.statusCode == 400 ? 'تحقق من بيانات الفاتورة — تأكد من البنود والإجمالي' : 'تعذر حفظ الفاتورة');
     } catch (_) {
@@ -148,6 +167,27 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
 
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// تنزيل «شهادة خصم وفق قانون 91 لسنة 2005» ومشاركتها مع المورد.
+  Future<void> _shareWithholdingCertificate(int invoiceId) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
+      final file = await api.downloadWithholdingNotice(invoiceId, docType: 'purchase');
+      final ok = await shareFile(context, file.bytes, file.fileName);
+      if (!ok) {
+        messenger.showSnackBar(const SnackBar(content: Text('تعذر مشاركة شهادة الخصم.')));
+      }
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(
+          content: Text(e.statusCode == 403
+              ? 'شهادة الخصم متاحة لصاحب الشركة/المحاسب فقط'
+              : 'تعذر تجهيز شهادة الخصم.')));
+    } catch (_) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('تعذر تجهيز شهادة الخصم. تأكد من الاتصال.')));
+    }
   }
 
   @override
@@ -297,6 +337,40 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
               children: [
                 SummaryRow(label: 'الإجمالي الفرعي', value: AppFmt.money(_subtotal)),
                 SummaryRow(label: 'ضريبة القيمة المضافة (${AppFmt.num(_vatRate)}%)', value: AppFmt.money(_vat)),
+                if (_withholdingEnabled)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.account_balance_outlined, size: 18, color: AppColors.primary),
+                            const SizedBox(width: 8),
+                            const Text('ضريبة الخصم (قانون 91 لسنة 2005)',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy)),
+                            const Spacer(),
+                            DropdownButton<String>(
+                              value: _withholdingKind,
+                              hint: const Text('مطفأة', style: TextStyle(fontSize: 12.5)),
+                              underline: const SizedBox.shrink(),
+                              items: const [
+                                DropdownMenuItem(value: 'supply', child: Text('توريدات 1%', style: TextStyle(fontSize: 12.5))),
+                                DropdownMenuItem(value: 'service', child: Text('خدمات 3%', style: TextStyle(fontSize: 12.5))),
+                                DropdownMenuItem(value: 'consult', child: Text('استشارات 5%', style: TextStyle(fontSize: 12.5))),
+                              ],
+                              onChanged: (v) => setState(() => _withholdingKind = v),
+                            ),
+                          ],
+                        ),
+                        if (_withholdingKind != null)
+                          SummaryRow(
+                            label: 'نخصمها من المورد (${_whLabels[_withholdingKind]})',
+                            value: '- ${AppFmt.money(_withholding)}',
+                          ),
+                      ],
+                    ),
+                  ),
                 const Divider(height: 16),
                 SummaryRow(label: 'الإجمالي الكلي', value: AppFmt.money(_total), emphasized: true),
                 const SizedBox(height: 10),

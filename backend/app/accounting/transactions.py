@@ -21,6 +21,7 @@ from app.models.inventory import Product
 from app.accounting.numbering import next_sales_invoice_number, next_purchase_invoice_number
 from app.accounting.inventory import receive_stock, consume_stock
 from app.accounting.engine import AccountingService, AccountingError, money
+from app.accounting.withholding import withholding_for
 
 
 def _is_catalog_mode(db: Session, company_id: int) -> bool:
@@ -77,6 +78,8 @@ def record_sale(
     is_credit: bool, method: str = "cash", customer_id: Optional[int] = None,
     vat_amount: Decimal = Decimal("0"), description: str = "بيع",
     items: Optional[list[dict]] = None,
+    withholding_kind: Optional[str] = None,
+    withholding_rate: Optional[Decimal] = None,
 ) -> SalesInvoice:
     """
     One sale = invoice + (optional) invoice items + stock consumption +
@@ -102,6 +105,12 @@ def record_sale(
                 "إجمالي البنود لا يطابق إجمالي الفاتورة. حدّث الفاتورة وحاول مرة أخرى."
             )
 
+    # ضريبة الخصم (قانون 91 لسنة 2005) تُحسب على المبلغ قبل ض.ق.م.
+    wh_amount, wh_rate = withholding_for(amount, withholding_kind, withholding_rate)
+    from app.accounting.chart_of_accounts import ensure_company_accounts
+    if wh_amount > 0:
+        ensure_company_accounts(db, company_id)
+
     invoice = SalesInvoice(
         company_id=company_id,
         invoice_number=next_sales_invoice_number(db, company_id),
@@ -112,6 +121,9 @@ def record_sale(
         subtotal=amount,
         vat_amount=vat_amount,
         total=amount + vat_amount,
+        withholding_kind=withholding_kind if wh_amount > 0 else None,
+        withholding_rate=wh_rate,
+        withholding_amount=wh_amount,
         status=DocumentStatus.CONFIRMED,
     )
     db.add(invoice)
@@ -138,6 +150,7 @@ def record_sale(
         db, company_id=company_id, entry_date=entry_date, amount=amount,
         is_credit=is_credit, method=method, vat_amount=vat_amount,
         cogs_amount=cogs_amount if cogs_amount > 0 else None,
+        withholding_amount=wh_amount,
         customer_id=customer_id, reference_id=invoice.id, description=description,
     )
     invoice.journal_entry_id = entry.id
@@ -151,6 +164,8 @@ def record_purchase(
     vat_amount: Decimal = Decimal("0"), goes_to_inventory: bool = False,
     description: str = "شراء",
     items: Optional[list[dict]] = None,
+    withholding_kind: Optional[str] = None,
+    withholding_rate: Optional[Decimal] = None,
 ) -> PurchaseInvoice:
     """
     No items  → behaves exactly as before: one amount, debited to Inventory
@@ -179,6 +194,11 @@ def record_purchase(
                 "إجمالي البنود لا يطابق إجمالي الفاتورة. حدّث الفاتورة وحاول مرة أخرى."
             )
 
+    wh_amount, wh_rate = withholding_for(amount, withholding_kind, withholding_rate)
+    if wh_amount > 0:
+        from app.accounting.chart_of_accounts import ensure_company_accounts
+        ensure_company_accounts(db, company_id)
+
     invoice = PurchaseInvoice(
         company_id=company_id,
         invoice_number=next_purchase_invoice_number(db, company_id),
@@ -189,6 +209,9 @@ def record_purchase(
         subtotal=amount,
         vat_amount=vat_amount,
         total=amount + vat_amount,
+        withholding_kind=withholding_kind if wh_amount > 0 else None,
+        withholding_rate=wh_rate,
+        withholding_amount=wh_amount,
         status=DocumentStatus.CONFIRMED,
     )
     db.add(invoice)
@@ -215,8 +238,8 @@ def record_purchase(
         # catalog_mode: named items are a definition catalog — the amount books
         # to COGS (like a plain service purchase), not into inventory stock.
         goes_to_inventory=goes_to_inventory and not catalog_mode,
-        supplier_id=supplier_id,
-        reference_id=invoice.id, description=description,
+        withholding_amount=wh_amount,
+        supplier_id=supplier_id, reference_id=invoice.id, description=description,
     )
     invoice.journal_entry_id = entry.id
     db.flush()

@@ -29,7 +29,8 @@ from app.models.operations import (
 from app.models.base import Base, engine, SessionLocal, IS_POSTGRES
 from app.models import Company, Customer, Supplier, Product
 from app.models.company import User, CompanyUser
-from app.accounting.chart_of_accounts import seed_chart_of_accounts
+from app.accounting.chart_of_accounts import seed_chart_of_accounts, ensure_company_accounts
+from app.schema_upgrade import ensure_schema_columns
 from app.accounting.engine import AccountingService, AccountingError
 from app.accounting.transactions import (
     record_sale, record_purchase, record_customer_payment,
@@ -49,6 +50,8 @@ from app.accounting.exports import (
     build_pdf, build_xlsx, EXPORTS, ExportError,
 )
 from app.accounting.exports import _balance_sheet_spec, _profit_loss_spec
+from app.accounting.pdf import build_withholding_notice
+from app.accounting.withholding import kind_label as withholding_kind_label, WITHHOLDING_KINDS
 from app.accounting.backup import export_backup_file, restore_backup, RestoreError
 from app.accounting.inventory import opening_stock_value
 from app.models.accounts import SystemAccountCode
@@ -99,6 +102,21 @@ def on_startup():
         except Exception as e:
             raise RuntimeError(f"Cannot reach the PostgreSQL database (DATABASE_URL): {e}")
     Base.metadata.create_all(bind=engine)
+    # create_all only creates missing TABLES — columns added to an existing
+    # cloud table must be ALTERed in by hand, otherwise the running Postgres
+    # schema silently lags behind the models (no alembic in this project).
+    added_columns = ensure_schema_columns(engine)
+    if added_columns:
+        print(f"[startup] schema upgraded: {', '.join(added_columns)}")
+    # Back-fill ledger accounts that older companies were created before
+    # (e.g. 1360/2160 for ضريبة الخصم) so get_account() can never miss them.
+    try:
+        with SessionLocal() as db:
+            for (cid,) in db.query(Company.id).all():
+                ensure_company_accounts(db, cid)
+            db.commit()
+    except Exception as e:  # pragma: no cover - never block boot on back-fill
+        print(f"[startup] account back-fill skipped: {e}")
     # spec §78: never run with the placeholder secret except in explicit dev mode.
     if SECRET_KEY == "dev-only-insecure-key-change-me" and not os.environ.get("HESABATAK_ALLOW_DEV_SECRET"):
         raise RuntimeError(
@@ -236,6 +254,8 @@ def get_settings(company_id: int, db: Session = Depends(get_db)):
         "vat_enabled": bool(company.vat_enabled), "vat_rate": str(company.vat_rate),
         "inventory_enabled": bool(company.inventory_enabled),
         "catalog_mode": bool(company.catalog_mode),
+        "tax_card_no": company.tax_card_no,
+        "withholding_enabled": bool(company.withholding_enabled),
     }
 
 
@@ -249,6 +269,8 @@ def update_settings(
     fiscal_year_start_month: Optional[int] = None,
     name: Optional[str] = None,
     business_type: Optional[str] = None,
+    tax_card_no: Optional[str] = None,
+    withholding_enabled: Optional[bool] = None,
     membership: CompanyUser = Depends(RoleChecker("manage_settings")),
     db: Session = Depends(get_db)):
     """Partial update — only the fields the caller sends change."""
@@ -259,6 +281,11 @@ def update_settings(
         company.name = name.strip()
     if business_type is not None:
         company.business_type = business_type
+    if tax_card_no is not None:
+        # البطاقة الضريبية تُطبع في إشعار/شهادة الخصم — تُقبل فارغة لمسحها.
+        company.tax_card_no = tax_card_no.strip()[:50] or None
+    if withholding_enabled is not None:
+        company.withholding_enabled = withholding_enabled
     if fiscal_year_start_month is not None:
         if not 1 <= fiscal_year_start_month <= 12:
             raise HTTPException(400, "شهر بداية السنة المالية يجب أن يكون بين 1 و 12.")
@@ -595,6 +622,8 @@ def op_sale(
     product_id: Optional[int] = None, quantity: Decimal = Decimal("0"),
     unit_price: Optional[Decimal] = None,
     items_json: Optional[str] = None,
+    withholding_kind: Optional[str] = None,
+    withholding_rate: Optional[Decimal] = None,
     record: CompanyUser = Depends(RoleChecker("record")),
     db: Session = Depends(get_db)):
     """One sale. When product_id+quantity are given, the invoice records the
@@ -616,9 +645,11 @@ def op_sale(
             items = [item]
         invoice = record_sale(db, company_id=company_id, entry_date=date.today(), amount=amount,
                                is_credit=is_credit, method=method, customer_id=customer_id,
-                               vat_amount=vat_amount, items=items)
+                               vat_amount=vat_amount, items=items,
+                               withholding_kind=withholding_kind, withholding_rate=withholding_rate)
         db.commit()
-        return {"invoice_number": invoice.invoice_number, "invoice_id": invoice.id, "status": "ok"}
+        return {"invoice_number": invoice.invoice_number, "invoice_id": invoice.id,
+                "withholding_amount": str(invoice.withholding_amount), "status": "ok"}
     except Exception as e:
         _friendly_error(e, db)
 
@@ -667,9 +698,11 @@ def _parse_items_json(raw: str) -> list[dict]:
 def op_purchase(
     company_id: int, amount: Decimal, is_credit: bool = False, method: str = "cash",
     supplier_id: Optional[int] = None, goes_to_inventory: bool = False,
-    vat_amount: Decimal = Decimal("0"),
-    product_id: Optional[int] = None, quantity: Decimal = Decimal("0"),
+    vat_amount: Decimal = Decimal("0"),    product_id: Optional[int] = None,
+    quantity: Decimal = Decimal("0"),
     items_json: Optional[str] = None,
+    withholding_kind: Optional[str] = None,
+    withholding_rate: Optional[Decimal] = None,
     record: CompanyUser = Depends(RoleChecker("record")),
     db: Session = Depends(get_db)):
     """One purchase. With product_id+quantity, stock is received at
@@ -692,9 +725,11 @@ def op_purchase(
         invoice = record_purchase(db, company_id=company_id, entry_date=date.today(), amount=amount,
                                    is_credit=is_credit, method=method, supplier_id=supplier_id,
                                    vat_amount=vat_amount, goes_to_inventory=goes_to_inventory,
-                                   items=items)
+                                   items=items,
+                                   withholding_kind=withholding_kind, withholding_rate=withholding_rate)
         db.commit()
-        return {"invoice_number": invoice.invoice_number, "invoice_id": invoice.id, "status": "ok"}
+        return {"invoice_number": invoice.invoice_number, "invoice_id": invoice.id,
+                "withholding_amount": str(invoice.withholding_amount), "status": "ok"}
     except Exception as e:
         _friendly_error(e, db)
 
@@ -1344,6 +1379,74 @@ def export_report(company_id: int, report_key: str, fmt: str = "pdf",
         "Content-Type": media,
     }
     return Response(content=body, media_type=media, headers=headers)
+
+
+# --------------------------------------------------------------------------
+# إشعار / شهادة خصم ضريبة الدخل — قانون 91 لسنة 2005 (بند الضرائب الجديدة)
+# --------------------------------------------------------------------------
+@scoped.get("/withholding-notice/{doc_type}/{invoice_id}")
+def withholding_notice(company_id: int, doc_type: str, invoice_id: int,
+                       membership: CompanyUser = Depends(RoleChecker("export")),
+                       db: Session = Depends(get_db)):
+    """ورقة A4 PDF: لوجو الشركة + تاريخ اليوم في النص + عنوان «إشعار/شهادة خصم
+    وفقاً لقانون 91 لسنة 2005»، ثم «شركة … إنه تم خصم مبلغ قدره … بالرقمان
+    والحروف»، ثم اسم الشركة المخصوم منها، البطاقة الضريبية، رقم الفاتورة،
+    مبلغ التعامل، نسبة الخصم، ثم اعتماد.
+
+    doc_type = sale      → إشعار خصم نأخذه من العميل عند السداد (العميل خصم).
+    doc_type = purchase  → شهادة نسلّمها للمورد بعد خصمنا الضريبة منه.
+    """
+    if doc_type not in ("sale", "purchase"):
+        raise HTTPException(404, "نوع مستند غير معروف.")
+    company = db.query(Company).filter(Company.id == company_id).one_or_none()
+    if company is None:
+        raise HTTPException(404, "الشركة غير موجودة.")
+
+    if doc_type == "sale":
+        inv = (db.query(SalesInvoice)
+               .filter(SalesInvoice.id == invoice_id, SalesInvoice.company_id == company_id)
+               .one_or_none())
+        if inv is None:
+            raise HTTPException(404, "الفاتورة غير موجودة.")
+        if not inv.withholding_amount:
+            raise HTTPException(400, "هذه الفاتورة بلا ضريبة خصم — فعّلها عند تسجيل البيع أولًا.")
+        party = (db.query(Customer).filter(Customer.id == inv.customer_id).one_or_none()
+                 if inv.customer_id else None)
+        issuer_name = party.name if party else "العميل"
+        withheld_from = company.name
+        doc_kind = "sale"
+        number, deal = inv.invoice_number, inv.total - inv.vat_amount
+    else:
+        inv = (db.query(PurchaseInvoice)
+               .filter(PurchaseInvoice.id == invoice_id, PurchaseInvoice.company_id == company_id)
+               .one_or_none())
+        if inv is None:
+            raise HTTPException(404, "الفاتورة غير موجودة.")
+        if not inv.withholding_amount:
+            raise HTTPException(400, "هذه الفاتورة بلا ضريبة خصم — فعّلها عند تسجيل الشراء أولًا.")
+        party = (db.query(Supplier).filter(Supplier.id == inv.supplier_id).one_or_none()
+                 if inv.supplier_id else None)
+        issuer_name = company.name
+        withheld_from = party.name if party else company.name
+        doc_kind = "purchase"
+        number, deal = inv.invoice_number, inv.total - inv.vat_amount
+
+    body = build_withholding_notice(
+        company_name=company.name, tax_card_no=company.tax_card_no,
+        issuer_name=issuer_name, withheld_from=withheld_from,
+        invoice_number=number, invoice_date=date.today(),
+        deal_amount=deal, rate=inv.withholding_rate,
+        kind_label=withholding_kind_label(inv.withholding_kind),
+        withholding_amount=inv.withholding_amount, doc_kind=doc_kind,
+    )
+    kind_word = "إشعار-خصم" if doc_kind == "sale" else "شهادة-خصم"
+    ascii_name = f"hesabatak-withholding-{number}-{date.today().isoformat()}.pdf"
+    arabic_name = quote(f"{kind_word}-{number}-{date.today().isoformat()}.pdf")
+    return Response(content=body, media_type="application/pdf", headers={
+        "Content-Disposition": (
+            f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{arabic_name}"
+        ),
+    })
 
 
 # ---------------------------------------------------------------- backup / restore (Phase 6, بند 59/60)

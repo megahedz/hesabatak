@@ -23,8 +23,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _name = TextEditingController();
   final _businessType = TextEditingController();
   final _vatRate = TextEditingController();
+  final _taxCard = TextEditingController();
   bool _vatEnabled = false;
   bool _inventoryEnabled = false;
+  bool _withholdingEnabled = false;
   int _fiscalStart = 1;
 
   bool _loading = true;
@@ -54,6 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _name.dispose();
     _businessType.dispose();
     _vatRate.dispose();
+    _taxCard.dispose();
     super.dispose();
   }
 
@@ -76,6 +79,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _vatEnabled = s['vat_enabled'] == true;
         _vatRate.text = s['vat_rate'] as String? ?? '14';
         _inventoryEnabled = s['inventory_enabled'] == true;
+        _withholdingEnabled = s['withholding_enabled'] == true;
+        _taxCard.text = s['tax_card_no'] as String? ?? '';
         _fiscalStart = (s['fiscal_year_start_month'] as num?)?.toInt() ?? 1;
         _role = me['role'] as String? ?? 'staff';
         _permissions = (me['permissions'] as List<dynamic>? ?? const [])
@@ -109,6 +114,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         vatRate: rate,
         inventoryEnabled: _inventoryEnabled,
         fiscalYearStartMonth: _fiscalStart,
+        taxCardNo: _taxCard.text.trim(),
+        withholdingEnabled: _withholdingEnabled,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -253,14 +260,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               const SizedBox(height: 12),
                             ],
                             SwitchListTile(
-                              value: _inventoryEnabled,
-                              onChanged: _canManageSettings ? (v) => setState(() => _inventoryEnabled = v) : null,
+                              value: _withholdingEnabled,
+                              onChanged: _canManageSettings ? (v) => setState(() => _withholdingEnabled = v) : null,
                               contentPadding: EdgeInsets.zero,
-                              title: const Text('تفعيل المخزون',
+                              title: const Text('تفعيل ضريبة الخصم',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                              subtitle: const Text('تتبع الأصناف والكميات',
+                              subtitle: const Text('1% توريدات — 3% خدمات — 5% استشارات (قانون 91 لسنة 2005)',
                                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                             ),
+                            if (_withholdingEnabled) ...[
+                              TextField(
+                                controller: _taxCard,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                    labelText: 'البطاقة الضريبية',
+                                    hintText: 'الرقم الذي يظهر في إشعار الخصم',
+                                    prefixIcon: Icon(Icons.credit_card, size: 20)),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             const SizedBox(height: 4),
                             const Text('بداية السنة المالية',
                                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),

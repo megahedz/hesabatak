@@ -23,12 +23,14 @@ DEFAULT_ACCOUNTS = [
     (SystemAccountCode.BANK.value, "البنك", "Bank", "ASSET", True),
     (SystemAccountCode.ACCOUNTS_RECEIVABLE.value, "أرصدة العملاء", "Accounts Receivable", "ASSET", True),
     (SystemAccountCode.INPUT_VAT_RECEIVABLE.value, "ضريبة القيمة المضافة المدفوعة", "Input VAT", "ASSET", True),
+    (SystemAccountCode.WITHHOLDING_TAX_RECEIVABLE.value, "ضريبة خصم تحت الحساب", "Withholding Tax Receivable", "ASSET", True),
     (SystemAccountCode.INVENTORY.value, "المخزون", "Inventory", "ASSET", True),
     ("1500", "الأصول الثابتة", "Fixed Assets", "ASSET", False),
 
     ("2000", "الخصوم", "Liabilities", "LIABILITY", False),
     (SystemAccountCode.ACCOUNTS_PAYABLE.value, "أرصدة الموردين", "Accounts Payable", "LIABILITY", True),
     (SystemAccountCode.OUTPUT_VAT_PAYABLE.value, "ضريبة القيمة المضافة المحصلة", "Output VAT", "LIABILITY", True),
+    (SystemAccountCode.WITHHOLDING_TAX_PAYABLE.value, "ضريبة خصم مستحقة", "Withholding Tax Payable", "LIABILITY", True),
     ("2200", "قروض", "Loans", "LIABILITY", False),
 
     ("3000", "حقوق الملكية", "Equity", "EQUITY", False),
@@ -75,6 +77,29 @@ def seed_chart_of_accounts(db: Session, company_id: int) -> None:
             name_en=name_en,
             account_type_id=types[type_code].id,
             is_system=is_system,
+        ))
+    db.flush()
+
+
+def ensure_company_accounts(db: Session, company_id: int) -> None:
+    """Add any DEFAULT_ACCOUNT that this company is missing (idempotent).
+
+    Companies seeded before a new account code existed (e.g. the cloud
+    Postgres company created before 1360/2160 were added) would make
+    get_account() raise forever — this back-fills them at startup and before
+    any withholding posting, so new ledger accounts are always reachable.
+    """
+    existing = {
+        a.code for a in db.query(Account).filter(Account.company_id == company_id).all()
+    }
+    missing = [a for a in DEFAULT_ACCOUNTS if a[0] not in existing]
+    if not missing:
+        return
+    types = ensure_account_types(db)
+    for code, name_ar, name_en, type_code, is_system in missing:
+        db.add(Account(
+            company_id=company_id, code=code, name_ar=name_ar, name_en=name_en,
+            account_type_id=types[type_code].id, is_system=is_system,
         ))
     db.flush()
 

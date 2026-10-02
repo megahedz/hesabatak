@@ -166,9 +166,12 @@ def test_pdf_export_is_valid_and_contains_report_title(db, company):
     pdf = build_pdf("تقرير المبيعات", "كل الفترات",
                     ["رقم الفاتورة", "التاريخ", "العميل", "قبل الضريبة", "ض.ق.م", "الإجمالي"],
                     rows, [("الإجمالي", rep["totals"]["total"])])
-    assert pdf.startswith(b"%PDF-1.4")
+    # reportlab يكتب %PDF-1.3؛ المهم أن الملف PDF صالحًا وبخط عربي مضمّن،
+    # وإلا لتظهر الحروف العربية «؟» كما كان يحدث في المولّد القديم.
+    assert pdf.startswith(b"%PDF-1.")
     assert b"%%EOF" in pdf
     assert b"/Contents" in pdf
+    assert b"/FontFile2" in pdf
 
 
 def test_xlsx_export_is_a_valid_zip_with_expected_parts(db, company):
@@ -348,7 +351,7 @@ def test_http_detailed_reports_and_exports():
     res = http_client.get(f"/companies/{cid}/export/sales", headers=h)
     assert res.status_code == 200
     assert res.headers["content-type"].startswith("application/pdf")
-    assert res.content.startswith(b"%PDF-1.4")
+    assert res.content.startswith(b"%PDF-1.")
     assert "filename*=UTF-8''" in res.headers["content-disposition"]
 
     # Excel export (xlsx is a zip)

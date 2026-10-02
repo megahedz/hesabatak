@@ -56,6 +56,8 @@ class SystemAccountCode(str, enum.Enum):
     OUTPUT_VAT_PAYABLE = "2150"   # liability: VAT collected on sales, owed to the tax authority
     ACCOUNTS_PAYABLE = "2100"
     INPUT_VAT_RECEIVABLE = "1350"  # asset: VAT paid on purchases, reclaimable
+    WITHHOLDING_TAX_RECEIVABLE = "1360"  # asset: ضريبة خصم تحت الحساب (مبيعات)
+    WITHHOLDING_TAX_PAYABLE = "2160"      # liability: ضريبة خصم مستحقة (مشتريات)
     OWNER_CAPITAL = "3100"
     OWNER_DRAWINGS = "3200"
     SALES_REVENUE = "4100"

@@ -176,6 +176,8 @@ class ApiClient {
     double? vatRate,
     bool? inventoryEnabled,
     int? fiscalYearStartMonth,
+    String? taxCardNo,
+    bool? withholdingEnabled,
   }) {
     return _post('/companies/$companyId/settings', {
       if (name != null && name.trim().isNotEmpty) 'name': name,
@@ -184,6 +186,8 @@ class ApiClient {
       if (vatRate != null) 'vat_rate': vatRate.toString(),
       if (inventoryEnabled != null) 'inventory_enabled': inventoryEnabled.toString(),
       if (fiscalYearStartMonth != null) 'fiscal_year_start_month': fiscalYearStartMonth.toString(),
+      if (taxCardNo != null) 'tax_card_no': taxCardNo,
+      if (withholdingEnabled != null) 'withholding_enabled': withholdingEnabled.toString(),
     }, useQueryParams: true);
   }
 
@@ -247,6 +251,8 @@ class ApiClient {
     int? customerId,
     double vatAmount = 0,
     List<Map<String, dynamic>>? items,
+    String? withholdingKind,
+    double? withholdingRate,
   }) {
     return _post('/companies/$companyId/operations/sale', {
       'amount': amount.toString(),
@@ -255,6 +261,9 @@ class ApiClient {
       'vat_amount': vatAmount.toString(),
       if (customerId != null) 'customer_id': customerId.toString(),
       if (items != null && items.isNotEmpty) 'items_json': jsonEncode(items),
+      if (withholdingKind != null && withholdingKind.isNotEmpty)
+        'withholding_kind': withholdingKind,
+      if (withholdingRate != null) 'withholding_rate': withholdingRate.toString(),
     }, useQueryParams: true);
   }
 
@@ -271,6 +280,8 @@ class ApiClient {
     bool goesToInventory = false,
     double vatAmount = 0,
     List<Map<String, dynamic>>? items,
+    String? withholdingKind,
+    double? withholdingRate,
   }) {
     return _post('/companies/$companyId/operations/purchase', {
       'amount': amount.toString(),
@@ -280,6 +291,9 @@ class ApiClient {
       'vat_amount': vatAmount.toString(),
       if (supplierId != null) 'supplier_id': supplierId.toString(),
       if (items != null && items.isNotEmpty) 'items_json': jsonEncode(items),
+      if (withholdingKind != null && withholdingKind.isNotEmpty)
+        'withholding_kind': withholdingKind,
+      if (withholdingRate != null) 'withholding_rate': withholdingRate.toString(),
     }, useQueryParams: true);
   }
 
@@ -480,6 +494,27 @@ class ApiClient {
         ));
     _checkOk(res);
     String name = 'hesabatak-$reportKey.${fmt == 'excel' ? 'xlsx' : 'pdf'}';
+    final disposition = res.headers['content-disposition'];
+    if (disposition != null) {
+      final star = RegExp(r"filename\*=UTF-8''([^;]+)").firstMatch(disposition);
+      if (star != null) {
+        name = Uri.decodeComponent(star.group(1)!);
+      }
+    }
+    return BackupFile(bytes: res.bodyBytes, fileName: name);
+  }
+
+  /// إشعار/شهادة خصم وفق قانون 91 لسنة 2005 (PDF).
+  /// [docType] = sale (إشعار من العميل) | purchase (شهادة للمورد).
+  Future<BackupFile> downloadWithholdingNotice(int invoiceId,
+      {required String docType}) async {
+    final cid = AppSession.instance.companyId;
+    final res = await _send(() => http.get(
+          Uri.parse('$baseUrl/companies/$cid/withholding-notice/$docType/$invoiceId'),
+          headers: _headers,
+        ));
+    _checkOk(res);
+    String name = 'hesabatak-$docType-withholding-$invoiceId.pdf';
     final disposition = res.headers['content-disposition'];
     if (disposition != null) {
       final star = RegExp(r"filename\*=UTF-8''([^;]+)").firstMatch(disposition);

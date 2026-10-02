@@ -29,6 +29,10 @@ class Company(Base, TimestampMixin):
     # «وضع الأصناف»: تعريف الأصناف فقط (كتالوج) بدون جرد كميات — البيع/الشراء
     # لا يسحب/يستلم مخزونًا ولا يمنع البيع بأكتر من الرصيد. مناسب لمكتب/خدمات.
     catalog_mode = Column(Boolean, default=False, nullable=False)
+    # «البطاقة الضريبية» — تظهر في إشعار الخصم وشهادة الخصم (قانون 91 لسنة 2005).
+    tax_card_no = Column(String(50), nullable=True)
+    # تفعيل ضريبة الخصم على المبيعات/المشتريات: 1% توريدات، 3% خدمات، 5% استشارات.
+    withholding_enabled = Column(Boolean, default=False, nullable=False)
 
 
 class CompanyUser(Base, TimestampMixin):
