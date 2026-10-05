@@ -40,6 +40,11 @@ def resolve_database_url(raw: str | None = None) -> str:
     """
     url = (raw if raw is not None else os.environ.get("DATABASE_URL", "")) or ""
     url = url.strip()
+    # Dashboard-paste accident: the value wrapped in matching single/double
+    # quotes (copying "postgres..." with the quotes) would otherwise fall
+    # through every branch below and silently count as non-Postgres.
+    if len(url) >= 2 and url[0] == url[-1] and url[0] in ("'", '"'):
+        url = url[1:-1].strip()
     if not url:
         return "sqlite:///./hesabatak.db"
 
@@ -60,6 +65,32 @@ def resolve_database_url(raw: str | None = None) -> str:
 
 DATABASE_URL = resolve_database_url()
 IS_POSTGRES = DATABASE_URL.startswith("postgresql")
+
+
+def database_diagnostics() -> str:
+    """Masked, safe-to-log description of the DATABASE_URL configuration.
+
+    Rendered into the startup log and the REQUIRE_POSTGRES guard error so a
+    failed production deploy explains ITSELF: not set vs wrong scheme —
+    without ever printing credentials or the host.
+    """
+    value = os.environ.get("DATABASE_URL", "").strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        value = value[1:-1].strip()
+    if not value:
+        return (
+            "DIAGNOSIS: DATABASE_URL is NOT set in the environment — add it in "
+            "the Render dashboard (Environment) with your Neon/PostgreSQL "
+            "connection string, then redeploy."
+        )
+    scheme = value.split("://", 1)[0]
+    if scheme.startswith("postgres"):
+        return f"DIAGNOSIS: DATABASE_URL is set and uses scheme '{scheme}://' (looks correct)."
+    return (
+        f"DIAGNOSIS: DATABASE_URL IS set but its scheme is '{scheme}://' instead "
+        "of postgresql:// ('postgres://' is also accepted) — check for typos, "
+        "stray quotes, or a SQLite/file path pasted by mistake."
+    )
 
 engine = create_engine(
     DATABASE_URL,

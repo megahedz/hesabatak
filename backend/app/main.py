@@ -26,7 +26,7 @@ from app.models.operations import (
     FinancialYear, FixedAsset, BankAccount, CashTransaction, BankTransaction,
 )
 
-from app.models.base import Base, engine, SessionLocal, IS_POSTGRES
+from app.models.base import Base, engine, SessionLocal, IS_POSTGRES, database_diagnostics
 from app.models import Company, Customer, Supplier, Product
 from app.models.company import User, CompanyUser
 from app.accounting.chart_of_accounts import seed_chart_of_accounts, ensure_company_accounts
@@ -91,8 +91,12 @@ def on_startup():
     if os.environ.get("HESABATAK_REQUIRE_POSTGRES") == "1" and not IS_POSTGRES:
         raise RuntimeError(
             "DATABASE_URL must point to a cloud PostgreSQL database in production "
-            "(postgresql://...). SQLite is not allowed as the source of truth."
+            "(postgresql://...). SQLite is not allowed as the source of truth. "
+            + database_diagnostics()
         )
+    # One masked line in the deploy log stating exactly how the DB is configured
+    # (set/correct scheme / not set / wrong scheme) — no credentials are printed.
+    print(f"[startup] database: {database_diagnostics()}")
     from sqlalchemy import text
     if IS_POSTGRES:
         # Fail fast with a clear message if the cloud DB is unreachable.
