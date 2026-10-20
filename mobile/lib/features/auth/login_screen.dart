@@ -205,7 +205,11 @@ class _LoginScreenState extends State<LoginScreen> {
       if (setup.total > 0) {
         try {
           await _api.postCapital(
-            companyId: companyId, amount: setup.cash, assetsAmount: setup.assets);
+            companyId: companyId,
+            amount: setup.cash,
+            method: 'cash',
+            assetsAmount: setup.assets,
+          );
           capitalPosted = true;
         } catch (_) {
           capitalPosted = false; // تُعرض رسالة «أضفه لاحقًا» بدل فشل التسجيل
