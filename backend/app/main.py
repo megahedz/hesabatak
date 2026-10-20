@@ -707,6 +707,7 @@ def op_purchase(
     items_json: Optional[str] = None,
     withholding_kind: Optional[str] = None,
     withholding_rate: Optional[Decimal] = None,
+    supplier_invoice_no: Optional[str] = None,
     record: CompanyUser = Depends(RoleChecker("record")),
     db: Session = Depends(get_db)):
     """One purchase. With product_id+quantity, stock is received at
@@ -730,7 +731,8 @@ def op_purchase(
                                    is_credit=is_credit, method=method, supplier_id=supplier_id,
                                    vat_amount=vat_amount, goes_to_inventory=goes_to_inventory,
                                    items=items,
-                                   withholding_kind=withholding_kind, withholding_rate=withholding_rate)
+                                   withholding_kind=withholding_kind, withholding_rate=withholding_rate,
+                                   supplier_invoice_no=supplier_invoice_no)
         db.commit()
         return {"invoice_number": invoice.invoice_number, "invoice_id": invoice.id,
                 "withholding_amount": str(invoice.withholding_amount), "status": "ok"}
@@ -817,13 +819,21 @@ def _get_or_create_expense_account(db: Session, company_id: int, label: str) -> 
 @scoped.post("/operations/capital")
 def op_capital(
     company_id: int, amount: Decimal, method: str = "cash",
+    assets_amount: Decimal = Decimal("0"),
     record: CompanyUser = Depends(RoleChecker("record")),
     db: Session = Depends(get_db)):
     try:
-        entry = AccountingService.create_capital(db, company_id=company_id, entry_date=date.today(),
-                                                   amount=amount, method=method)
+        entry = AccountingService.create_capital(
+            db, company_id=company_id, entry_date=date.today(),
+            amount=amount, method=method, assets_amount=assets_amount,
+            # تأسيس الشركة: وصف يوضّح مكوّنات رأس المال (نقدية + أصول مقدمة).
+            description=("رأس مال افتتاحي (نقدية + أصول)" if assets_amount > 0
+                         else "إيداع رأس مال"),
+        )
         db.commit()
-        return {"journal_entry_id": entry.id, "status": "ok"}
+        return {"journal_entry_id": entry.id, "status": "ok",
+                "total": str(amount + assets_amount),
+                "cash_amount": str(amount), "assets_amount": str(assets_amount)}
     except Exception as e:
         _friendly_error(e, db)
 
@@ -964,7 +974,8 @@ def report_purchases(company_id: int, start: Optional[date] = None, end: Optiona
         "rows": [{"invoice_number": r.invoice_number, "invoice_date": str(r.invoice_date),
                   "supplier_name": r.supplier_name, "is_credit": r.is_credit,
                   "payment_method": r.payment_method, "subtotal": str(r.subtotal),
-                  "vat_amount": str(r.vat_amount), "total": str(r.total)} for r in rep["rows"]],
+                  "vat_amount": str(r.vat_amount), "total": str(r.total),
+                  "supplier_invoice_no": r.supplier_invoice_no} for r in rep["rows"]],
         "lines": {inv: [{"product_name": l.product_name, "quantity": str(l.quantity),
                          "unit_price": str(l.unit_price), "line_total": str(l.line_total)}
                         for l in lines]

@@ -24,16 +24,30 @@ class _Item {
   String description = '';
   double quantity = 1;
   double unitCost = 0;
+  double discount = 0;   // خصم البند — يُطرح من (كمية × سعر الوحدة)
   final TextEditingController descController = TextEditingController();
 
   void dispose() => descController.dispose();
 
-  double get lineTotal => double.parse((quantity * unitCost).toStringAsFixed(2));
+  /// التكلفة الفعلية بعد خصم خصم البند — هذا ما يُرسل للسيرفر لأنه يتحقق
+  /// أن مجموع البنود يساوي إجمالي الفاتورة (نفس نهج شاشة البيع).
+  double get effectiveCost {
+    if (quantity <= 0) return unitCost;
+    final net = (quantity * unitCost - discount).clamp(0, double.infinity);
+    return double.parse((net / quantity).toStringAsFixed(2));
+  }
+
+  double get lineTotal {
+    if (quantity <= 0) return 0;
+    return double.parse((quantity * effectiveCost).toStringAsFixed(2));
+  }
 }
 
 class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
   final _api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
   final _dateController = TextEditingController();
+  // رقم فاتورة المورد الأصلية (اختياري) — يُحفظ مع الفاتورة.
+  final _supplierInvoiceController = TextEditingController();
   DateTime _date = DateTime.now();
   List<dynamic> _suppliers = const [];
   List<dynamic> _products = const [];
@@ -60,6 +74,7 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
   @override
   void dispose() {
     _dateController.dispose();
+    _supplierInvoiceController.dispose();
     for (final i in _items) {
       i.dispose();
     }
@@ -131,7 +146,8 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
           .map((i) => {
                 'product_id': i.productId,
                 'quantity': i.quantity,
-                'unit_price': i.unitCost,
+                // التكلفة بعد خصم البند — الخصم مطبَّق بالفعل في السعر.
+                'unit_price': i.effectiveCost,
                 if (i.description.trim().isNotEmpty) 'description': i.description.trim(),
               })
           .toList();
@@ -146,6 +162,9 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
         items: items.isEmpty ? null : items,
         withholdingKind: _withholdingKind,
         withholdingRate: _withholdingKind == null ? null : _whRates[_withholdingKind!],
+        supplierInvoiceNo: _supplierInvoiceController.text.trim().isEmpty
+            ? null
+            : _supplierInvoiceController.text.trim(),
       );
       final num = res['invoice_number'];
       final invoiceId = res['invoice_id'] as int?;
@@ -261,6 +280,19 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
               onChanged: (v) => setState(() => _supplierId = v),
             ),
           ),
+          const SizedBox(height: 12),
+          // رقم فاتورة المورد الأصلية — يُستخدم لمطابقة كشف حساب المورد.
+          _LabeledField(
+            label: 'رقم فاتورة المورد (اختياري)',
+            child: TextField(
+              controller: _supplierInvoiceController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                hintText: 'الرقم المطبوع على فاتورة المورد — مثال: SUP-1042',
+                prefixIcon: Icon(Icons.confirmation_number_outlined, size: 20),
+              ),
+            ),
+          ),
           const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,6 +368,7 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
             child: Column(
               children: [
                 SummaryRow(label: 'الإجمالي الفرعي', value: AppFmt.money(_subtotal)),
+                SummaryRow(label: 'خصم البنود', value: AppFmt.money(_items.fold<double>(0, (s, i) => s + i.discount))),
                 SummaryRow(label: 'ضريبة القيمة المضافة (${AppFmt.num(_vatRate)}%)', value: AppFmt.money(_vat)),
                 if (_withholdingEnabled)
                   Padding(
@@ -513,24 +546,47 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
               ),
             ],
           ),
-          // وصف البند — إجباري للبنود بدون صنف معرّف، اختياري لغيرها.
+          // وصف البند + خصم البند — إجباري الوصف للبنود بدون صنف معرّف.
           Padding(
             padding: const EdgeInsets.only(top: 6, right: 36),
-            child: TextField(
-              controller: item.descController,
-              style: const TextStyle(fontSize: 12.5),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: item.productId == null
-                    ? 'وصف الشراء (إجباري) — مثال: تصميم شعار'
-                    : 'وصف إضافي (اختياري)',
-                hintStyle: TextStyle(
-                    fontSize: 11.5,
-                    color: item.productId == null ? AppColors.amber : AppColors.textSecondary),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onChanged: (v) => item.description = v,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: item.descController,
+                    style: const TextStyle(fontSize: 12.5),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: item.productId == null
+                          ? 'وصف الشراء (إجباري) — مثال: تصميم شعار'
+                          : 'وصف إضافي (اختياري)',
+                      hintStyle: TextStyle(
+                          fontSize: 11.5,
+                          color: item.productId == null ? AppColors.amber : AppColors.textSecondary),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onChanged: (v) => item.description = v,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 96,
+                  child: TextField(
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12.5),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'خصم',
+                      hintStyle: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onChanged: (v) => setState(() => item.discount = double.tryParse(v) ?? 0),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

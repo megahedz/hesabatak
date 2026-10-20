@@ -331,16 +331,29 @@ class AccountingService:
     @staticmethod
     def create_capital(db: Session, *, company_id: int, entry_date: date,
                         amount: Decimal, method: str = "cash",
+                        assets_amount: Decimal = Decimal("0"),
                         description: str = "إيداع رأس مال") -> JournalEntry:
+        """رأس المال = نقدية مودعة (`amount`) + أصول مقدمة للشركة
+        (`assets_amount` — معدّات/أثاث تم شراؤه، يُرحَّل على حساب 1500
+        «الأصول الثابتة»). رأس المال في الحساب=Cash/Bank + Fixed Assets.
+        القيمة الافتراضية assets=0 تُبقي السلوك القديم كما هو تمامًا."""
         amount = money(amount)
-        cash_side = SystemAccountCode.BANK.value if method == "bank" else SystemAccountCode.CASH.value
+        assets = money(assets_amount)
+        if amount < 0 or assets < 0:
+            raise AccountingError("مقدار رأس المال لا يمكن أن يكون سالبًا.")
+        lines: list[Line] = []
+        if amount > 0:
+            cash_side = SystemAccountCode.BANK.value if method == "bank" else SystemAccountCode.CASH.value
+            lines.append(Line(account_code=cash_side, debit=amount))
+        if assets > 0:
+            lines.append(Line(account_code="1500", debit=assets))
+        if not lines:
+            raise AccountingError("رأس المال يجب أن يكون أكبر من صفر.")
+        lines.append(Line(account_code=SystemAccountCode.OWNER_CAPITAL.value, credit=amount + assets))
         return AccountingService._post(
             db, company_id=company_id, entry_date=entry_date, reference_type="owner_capital",
             description=description,
-            lines=[
-                Line(account_code=cash_side, debit=amount),
-                Line(account_code=SystemAccountCode.OWNER_CAPITAL.value, credit=amount),
-            ],
+            lines=lines,
         )
 
     @staticmethod

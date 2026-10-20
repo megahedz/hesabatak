@@ -197,7 +197,8 @@ def export_backup(db: Session, company_id: int) -> dict:
                      ("total", "total"), ("journal_entry_id", "journal_entry_id"),
                      ("withholding_kind", "withholding_kind"),
                      ("withholding_rate", "withholding_rate"),
-                     ("withholding_amount", "withholding_amount")])
+                     ("withholding_amount", "withholding_amount"),
+                     ("supplier_invoice_no", "supplier_invoice_no")])
             for i in purchases
         ],
         "purchase_invoice_items": [
@@ -484,6 +485,7 @@ def _restore_in_session(db: Session, company_id: int, payload: dict) -> int:
             withholding_kind=i.get("withholding_kind"),
             withholding_rate=_parse_dec(i.get("withholding_rate", 0), "withholding_rate"),
             withholding_amount=_parse_dec(i.get("withholding_amount", 0), "withholding_amount"),
+            supplier_invoice_no=i.get("supplier_invoice_no"),
             journal_entry_id=int(i["journal_entry_id"]) if i.get("journal_entry_id") is not None else None,
         ))
     for i in payload.get("purchase_invoice_items", []):

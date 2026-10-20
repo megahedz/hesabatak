@@ -282,6 +282,7 @@ class ApiClient {
     List<Map<String, dynamic>>? items,
     String? withholdingKind,
     double? withholdingRate,
+    String? supplierInvoiceNo,
   }) {
     return _post('/companies/$companyId/operations/purchase', {
       'amount': amount.toString(),
@@ -294,6 +295,8 @@ class ApiClient {
       if (withholdingKind != null && withholdingKind.isNotEmpty)
         'withholding_kind': withholdingKind,
       if (withholdingRate != null) 'withholding_rate': withholdingRate.toString(),
+      if (supplierInvoiceNo != null && supplierInvoiceNo.trim().isNotEmpty)
+        'supplier_invoice_no': supplierInvoiceNo.trim(),
     }, useQueryParams: true);
   }
 
@@ -346,10 +349,14 @@ class ApiClient {
     required int companyId,
     required double amount,
     required String method,
+    /// جزء رأس المال المُنفَق على شراء أصول (معدات/بضاعة) — يُقيَّد على 1500
+    /// «الأصول الثابتة» بجانب النقدية في قيد رأس المال.
+    double assetsAmount = 0,
   }) {
     return _post('/companies/$companyId/operations/capital', {
       'amount': amount.toString(),
       'method': method,
+      if (assetsAmount > 0) 'assets_amount': assetsAmount.toString(),
     }, useQueryParams: true);
   }
 

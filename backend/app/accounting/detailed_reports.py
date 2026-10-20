@@ -61,6 +61,7 @@ class PurchaseRow:
     subtotal: Decimal
     vat_amount: Decimal
     total: Decimal
+    supplier_invoice_no: Optional[str] = None   # رقم فاتورة المورد الأصلية
 
 
 @dataclass
@@ -176,6 +177,7 @@ def purchases_report(db: Session, company_id: int, start: Optional[date] = None,
         supplier_name=name, is_credit=bool(inv.is_credit),
         payment_method=inv.payment_method.value,
         subtotal=money(inv.subtotal), vat_amount=money(inv.vat_amount), total=money(inv.total),
+        supplier_invoice_no=inv.supplier_invoice_no or None,
     ) for inv, name in invoices]
 
     return {

@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Generate the حساباتك launcher icon set.
+"""Generate the حساباتك launcher icon set — v2 «حيوية» refresh.
 
-Artwork — mirrors the NEW approved brand reference (bold tile-filling M):
-  * white rounded tile; the artwork fills the tile edge-to-edge
-  * bold navy "M": left leg carries 3 rising chart bars; right leg carries a
-    cyan circuit-node pattern AND a small "EGP" circuit badge near its foot
-  * thick mint→cyan→green gradient growth ribbon sweeping diagonally across
-    the WHOLE tile (bottom-left → top-right), ending in a large arrowhead
-    slightly outside the M's right shoulder — like the reference
+Artwork (same brand identity as the reference, restyled to POP):
+  * vivid diagonal gradient tile: deep navy → rich blue → emerald
+    (replaces the plain white tile — the icon now reads instantly on any
+    launcher background, light or dark)
+  * bold WHITE tile-filling M: left leg carries 3 vivid rising chart bars,
+    right leg carries a blue circuit pattern + the EGP circuit badge
+  * thick mint→cyan→green gradient growth ribbon sweeping the whole tile
+    (bottom-left → top-right) ending in a large arrowhead, with a soft
+    white glow behind the tip
+  * playful 4-point sparkles for liveliness
 
 Outputs (next to this script):
   * icon.png            — 1024×1024 launcher source (flutter_launcher_icons)
-  * icon_foreground.png — 1024×1024 adaptive foreground (safe-zone scaled)
+  * icon_foreground.png — 1024×1024 adaptive foreground: gradient background
+    baked in + artwork scaled into the 66% circular safe zone (the white
+    adaptive background never shows through)
 
 Usage:  python3 generate_icon.py   (requires: pip install pillow)
 """
@@ -21,32 +26,51 @@ from PIL import Image, ImageDraw
 
 S = 1024
 
-# palette (matches the reference photo exactly)
-WHITE = (255, 255, 255, 255)
-TILE_BORDER = (219, 226, 235, 255)
-NAVY_TOP = (30, 75, 130, 255)
-NAVY_BOT = (10, 33, 66, 255)
+# ---------------------------------------------------------------- palette
+TILE_STOPS = [                      # diagonal gradient (navy → blue → emerald)
+    (0.00, (12, 40, 84, 255)),
+    (0.45, (21, 95, 168, 255)),
+    (0.75, (17, 139, 156, 255)),
+    (1.00, (13, 158, 118, 255)),
+]
+M_TOP = (255, 255, 255, 255)        # white M blocks (top)
+M_BOT = (226, 238, 252, 255)        # soft blue-white (bottom)
+BAR_COLORS = ((16, 185, 129, 255), (34, 211, 238, 255), (59, 130, 246, 255))
+CIRCUIT = (31, 111, 208, 255)       # vivid blue circuit on the white leg
+BADGE_BG = (14, 43, 84, 255)
+BADGE_FG = (125, 240, 199, 255)
 MINT = (150, 236, 168, 255)
 CYAN = (44, 205, 222, 255)
 GREEN = (53, 216, 154, 255)
 BLUE = (47, 160, 230, 255)
 DEEP_GREEN = (42, 164, 107, 255)
 TEAL = (37, 183, 168, 255)
-BAR_COLORS = ((79, 195, 161, 255), (62, 155, 216, 255), (127, 196, 238, 255))
-CIRCUIT = (63, 198, 232, 255)
-BADGE_BG = (16, 58, 108, 255)
-BADGE_FG = (120, 226, 190, 255)
+WHITE = (255, 255, 255, 255)
+SPARKLE_A = (255, 255, 255, 235)
+SPARKLE_B = (190, 245, 255, 225)
 
 
 def lerp(c0, c1, t):
     return tuple(int(round(c0[i] + (c1[i] - c0[i]) * t)) for i in range(4))
 
 
-def vgrad(w, h, c0, c1):
+def _stop_color(stops, t):
+    for i in range(len(stops) - 1):
+        t0, c0 = stops[i]
+        t1, c1 = stops[i + 1]
+        if t0 <= t <= t1:
+            return lerp(c0, c1, (t - t0) / max(1e-6, t1 - t0))
+    return stops[-1][1]
+
+
+def dgrad(w, h, stops):
+    """Diagonal gradient (top-left → bottom-right) — the lively tile base."""
     g = Image.new("RGBA", (w, h))
-    gd = ImageDraw.Draw(g)
+    px = g.load()
+    denom = max(1, (w + h - 2))
     for y in range(h):
-        gd.line([(0, y), (w, y)], fill=lerp(c0, c1, y / max(1, h - 1)))
+        for x in range(w):
+            px[x, y] = _stop_color(stops, (x + y) / denom)
     return g
 
 
@@ -60,13 +84,12 @@ def dot(draw, p, r, color):
     draw.ellipse([p[0] - r, p[1] - r, p[0] + r, p[1] + r], fill=color)
 
 
-def _stop_color(stops, t):
-    for i in range(len(stops) - 1):
-        t0, c0 = stops[i]
-        t1, c1 = stops[i + 1]
-        if t0 <= t <= t1:
-            return lerp(c0, c1, (t - t0) / max(1e-6, t1 - t0))
-    return stops[-1][1]
+def vgrad(w, h, c0, c1):
+    g = Image.new("RGBA", (w, h))
+    gd = ImageDraw.Draw(g)
+    for y in range(h):
+        gd.line([(0, y), (w, y)], fill=lerp(c0, c1, y / max(1, h - 1)))
+    return g
 
 
 def grad_polyline(draw, pts, stops, width):
@@ -95,23 +118,76 @@ def grad_polyline(draw, pts, stops, width):
         dot(draw, p, r, _stop_color(stops, t))
 
 
+def glow(size, center, radius, color, max_alpha):
+    """Soft radial glow baked as concentric alpha rings (one layer)."""
+    g = Image.new("RGBA", size, (0, 0, 0, 0))
+    gd = ImageDraw.Draw(g)
+    cx, cy = center
+    steps = 40
+    for i in range(steps, 0, -1):
+        t = i / steps
+        r = radius * t
+        a = int(max_alpha * (1 - t) ** 1.4)
+        if a <= 0:
+            continue
+        gd.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color + (a,))
+    return g
+
+
+def sparkle(draw, cx, cy, r, color, thin=0.26):
+    """4-point star with concave sides — the 'lively' twinkle."""
+    k = r * thin
+    draw.polygon([
+        (cx, cy - r), (cx + k, cy - k), (cx + r, cy), (cx + k, cy + k),
+        (cx, cy + r), (cx - k, cy + k), (cx - r, cy), (cx - k, cy - k),
+    ], fill=color)
+
+
+def egp_strokes(img, cx, cy, color=BADGE_FG, t=20):
+    """Hand-drawn E, G, P inside the badge (PIL's default font is Latin-only
+    and too thin, so the letters are built from thick strokes like the ref)."""
+    d = ImageDraw.Draw(img)
+
+    def seg(x0, y0, x1, y1, w=t):
+        d.line([(x0, y0), (x1, y1)], fill=color, width=w)
+
+    def ring(x, y, r, w=t):
+        d.ellipse([x - r, y - r, x + r, y + r], outline=color, width=w)
+
+    # E
+    ex = cx - 62
+    seg(ex, cy - 26, ex, cy + 26)
+    seg(ex, cy - 26, ex + 30, cy - 26)
+    seg(ex, cy, ex + 22, cy)
+    seg(ex, cy + 26, ex + 30, cy + 26)
+    # G
+    gx = cx + 2
+    ring(gx, cy, 28)
+    seg(gx + 28, cy, gx + 28, cy + 10, t - 6)
+    seg(gx, cy + 28, gx + 28, cy + 28, t - 6)
+    # P
+    px = cx + 46
+    seg(px, cy - 28, px, cy + 28)
+    ring(px + 2, cy - 14, 14, t - 6)
+
+
 # ======================================================================
-# Brand mark: bold tile-filling M (same geometry family as the reference)
+# Brand mark: bold tile-filling M (white on the gradient)
 # ======================================================================
-M_TOP = 150          # top of the left leg (reference M reaches near tile top)
-M_BOTTOM = 874       # baseline shared by both legs
-LEG_W = 262          # leg thickness — bold like the reference
-LX0, LX1 = 148, 148 + LEG_W          # left leg x-range
-RX0, RX1 = 616, 616 + LEG_W          # right leg x-range (higher, like ref)
+M_TOP_Y = 150          # top of the left leg
+M_BOTTOM = 874         # baseline shared by both legs
+LEG_W = 262            # leg thickness — bold like the reference
+LX0, LX1 = 148, 148 + LEG_W
+RX0, RX1 = 616, 616 + LEG_W
 
 
 def draw_blocks(layer):
-    """Navy M blocks — bold, tile-filling, right leg taller (exactly like ref)."""
-    # ---- left leg with 3 rising chart bars
-    lb = (LX0, M_TOP, LX1, M_BOTTOM)
+    """White M blocks — bold, tile-filling, right leg shorter (as reference)."""
+    # ---- left leg with 3 rising chart bars (vivid on white)
+    lb = (LX0, M_TOP_Y, LX1, M_BOTTOM)
     lw, lh = lb[2] - lb[0], lb[3] - lb[1]
     mask = rounded_mask((lw, lh), 20)
-    grad = vgrad(lw, lh, NAVY_TOP, NAVY_BOT)
+    grad = vgrad(lw, lh, M_TOP, M_BOT)
     bars = Image.new("RGBA", grad.size, (0, 0, 0, 0))
     bd = ImageDraw.Draw(bars)
     bw, gap, bottom = 60, 24, lh - 26
@@ -123,11 +199,11 @@ def draw_blocks(layer):
     grad.alpha_composite(bars)
     layer.paste(grad, (lb[0], lb[1]), mask)
 
-    # ---- right leg with cyan circuit nodes + EGP circuit badge (like ref)
+    # ---- right leg with blue circuit nodes + EGP circuit badge
     rb = (RX0, 330, RX1, M_BOTTOM)
     rw, rh = rb[2] - rb[0], rb[3] - rb[1]
     mask = rounded_mask((rw, rh), 20)
-    grad = vgrad(rw, rh, NAVY_TOP, NAVY_BOT)
+    grad = vgrad(rw, rh, M_TOP, M_BOT)
     circ = Image.new("RGBA", grad.size, (0, 0, 0, 0))
     cd = ImageDraw.Draw(circ)
     w = 11
@@ -139,20 +215,17 @@ def draw_blocks(layer):
         cd.ellipse([x - 19, y - 19, x + 19, y + 19], outline=CIRCUIT, width=w)
     for (x, y) in [(66, 118), (66, 208), (132, 162)]:
         dot(cd, (x, y), 9, CIRCUIT)
-    grad.alpha_composite(circ)
 
-    # EGP circuit badge near the foot of the right leg (reference shows it there)
+    # EGP circuit badge near the foot of the right leg
     badge_r = 108
     bx, by = 130, rh - 128
     cd.ellipse([bx - badge_r, by - badge_r, bx + badge_r, by + badge_r],
                fill=BADGE_BG, outline=BADGE_FG, width=12)
-    for (px, py) in [(bx, by), (bx + 6, by + badge_r + 6)]:
-        pass  # anchor points below are drawn directly on the tile instead
+    egp_strokes(circ, bx, by)
     grad.alpha_composite(circ)
     layer.paste(grad, (rb[0], rb[1]), mask)
 
-    # badge connection node + stem on the tile (spills slightly outside leg —
-    # like the reference's circuit badge that bridges both legs)
+    # badge connection node + stem bridging to the left leg
     d = ImageDraw.Draw(layer)
     anchor = (rb[0] + 130, M_BOTTOM - 128)
     stem_end = (LX1 + 4, M_BOTTOM - 128)
@@ -162,42 +235,10 @@ def draw_blocks(layer):
     dot(d, stem_end, 10, BADGE_FG)
 
 
-def _egp_text(rh, by):
-    """Draw EGP letters as circuit-like strokes (PIL default font is Latin-only
-    and too thin, so we hand-draw E, G, P as thick strokes)."""
-    img = Image.new("RGBA", (rh, rh), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    t = 20  # stroke thickness
-    cx, cy = rh // 2, rh // 2
-
-    def seg(x0, y0, x1, y1, col=BADGE_FG, w=t):
-        d.line([(x0, y0), (x1, y1)], fill=col, width=w)
-
-    def ring(x, y, r, col=BADGE_FG, w=t):
-        d.ellipse([x - r, y - r, x + r, y + r], outline=col, width=w)
-
-    # E
-    ex = cx - 62
-    seg(ex, cy - 26, ex, cy + 26)
-    seg(ex, cy - 26, ex + 30, cy - 26)
-    seg(ex, cy, ex + 22, cy)
-    seg(ex, cy + 26, ex + 30, cy + 26)
-    # G
-    gx = cx + 2
-    ring(gx, cy, 28)
-    seg(gx + 28, cy, gx + 28, cy + 10, w=t - 6)
-    seg(gx, cy + 28, gx + 28, cy + 28, w=t - 6)
-    # P
-    px = cx + 46
-    seg(px, cy - 28, px, cy + 28)
-    ring(px + 2, cy - 14, 14, w=t - 6)
-    return img
-
-
 def draw_ribbon(layer):
     """Thick gradient ribbon sweeping the WHOLE tile bottom-left → top-right,
     with the doubled green stroke under its first diagonal and a large
-    arrowhead — matching the reference photo."""
+    arrowhead — matching the reference."""
     p0, p1, p2, p3 = (118, 892), (512, 352), (618, 560), (896, 140)
     d = ImageDraw.Draw(layer)
 
@@ -239,29 +280,57 @@ def draw_ribbon(layer):
     d.polygon([tip, mid, a1], fill=BLUE)
 
 
-def render(with_tile=True):
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+def draw_sparkles(layer):
+    """4-point twinkles sprinkled in the empty corners — the lively touch."""
+    d = ImageDraw.Draw(layer)
+    for (x, y, r, c) in [
+        (330, 76, 34, SPARKLE_A),
+        (505, 208, 22, SPARKLE_B),
+        (978, 336, 27, SPARKLE_A),
+        (748, 946, 30, SPARKLE_A),
+        (90, 470, 20, SPARKLE_B),
+    ]:
+        sparkle(d, x, y, r, c)
+
+
+def render(with_tile=True, art_scale=1.0):
+    """Full composition. `art_scale` shrinks the mark (adaptive safe zone)."""
+    base = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    grad = dgrad(S, S, TILE_STOPS)
     if with_tile:
-        d = ImageDraw.Draw(img)
-        d.rounded_rectangle([20, 20, S - 20, S - 20], radius=232, fill=WHITE,
-                            outline=TILE_BORDER, width=3)
-    draw_blocks(img)
-    draw_ribbon(img)
-    return img
+        mask = rounded_mask((S, S), 232)
+        base.paste(grad, (0, 0), mask)
+        ImageDraw.Draw(base).rounded_rectangle(
+            [20, 20, S - 20, S - 20], radius=232, outline=(255, 255, 255, 70), width=4)
+    else:
+        base.paste(grad, (0, 0))
+
+    # glows follow the artwork when it is scaled (arrow tip + ribbon start)
+    k = art_scale
+
+    def about(p):
+        return (S / 2 + (p[0] - S / 2) * k, S / 2 + (p[1] - S / 2) * k)
+
+    base.alpha_composite(glow((S, S), about((935, 95)), 300 * k, (255, 255, 255), 95))
+    base.alpha_composite(glow((S, S), about((150, 900)), 260 * k, (120, 240, 255), 70))
+
+    # artwork (M + ribbon + sparkles), scaled into the safe zone when needed
+    art = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    draw_blocks(art)
+    draw_ribbon(art)
+    draw_sparkles(art)
+    if art_scale != 1.0:
+        w = int(S * art_scale)
+        art = art.resize((w, w), Image.LANCZOS)
+    base.alpha_composite(art, ((S - art.width) // 2, (S - art.height) // 2))
+    return base
 
 
 def main():
-    render(with_tile=True).save("icon.png")
-
-    # adaptive foreground: artwork only, scaled into the circular safe zone
-    art = render(with_tile=False)
-    fg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    # 0.57 keeps the bold new artwork inside the ~66% adaptive safe circle
-    scale = 0.57
-    small = art.resize((int(S * scale), int(S * scale)), Image.LANCZOS)
-    fg.alpha_composite(small, ((S - small.width) // 2, (S - small.height) // 2))
-    fg.save("icon_foreground.png")
-    print("icon.png + icon_foreground.png generated")
+    render(with_tile=True, art_scale=1.0).save("icon.png")
+    # adaptive foreground: gradient baked in + artwork inside the 66% circle
+    render(with_tile=False, art_scale=0.57).save("icon_foreground.png")
+    print("icon.png + icon_foreground.png generated (v2 lively refresh)")
 
 
 if __name__ == "__main__":

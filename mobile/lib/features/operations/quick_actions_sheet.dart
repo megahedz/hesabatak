@@ -431,17 +431,54 @@ class _SimpleAmountFormState extends State<_SimpleAmountForm> {
   String _method = 'cash';
   bool _saving = false;
 
+  // قائمة أنواع المصروفات (نفس شاشة المصروفات) + «مصروف مخصص» باسم حر
+  // يكتبه المستخدم — السيرفر ينشئ حسابًا دائمًا به.
+  static const _expenseTypes = <(String, String)>[
+    ('6100', 'إيجار'),
+    ('6200', 'كهرباء ومياه'),
+    ('6300', 'مرتبات'),
+    ('6400', 'مواصلات'),
+    ('6500', 'صيانة'),
+    ('6600', 'تسويق'),
+    ('6900', 'مصروفات أخرى'),
+    ('custom', 'مصروف مخصص (اكتب الاسم)'),
+  ];
+  String _expenseType = '6900';
+  final _customNameController = TextEditingController();
+
+  bool get _isExpense => widget.kind == _SimpleKind.expense;
+  bool get _isCustomExpense => _isExpense && _expenseType == 'custom';
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _customNameController.dispose();
+    super.dispose();
+  }
+
   Future<void> _save() async {
     final amount = double.tryParse(_amountController.text.trim());
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('من فضلك أدخل مبلغًا صحيحًا')));
       return;
     }
+    if (_isCustomExpense && _customNameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('اكتب اسم المصروف المخصص')));
+      return;
+    }
     setState(() => _saving = true);
     try {
       switch (widget.kind) {
         case _SimpleKind.expense:
-          await _api.postExpense(companyId: AppConfig.companyId, amount: amount, method: _method);
+          await _api.postExpense(
+            companyId: AppConfig.companyId,
+            amount: amount,
+            method: _method,
+            // الجاهز يُرحَّل على حسابه المعروف؛ والمخصص ينشئ حسابًا باسمه الحر.
+            expenseAccountCode: _isCustomExpense ? null : _expenseType,
+            customLabel: _isCustomExpense ? _customNameController.text.trim() : null,
+          );
           break;
         case _SimpleKind.capital:
           await _api.postCapital(companyId: AppConfig.companyId, amount: amount, method: _method);
@@ -479,6 +516,37 @@ class _SimpleAmountFormState extends State<_SimpleAmountForm> {
             autofocus: true,
             decoration: const InputDecoration(labelText: 'المبلغ', suffixText: 'ج.م', border: OutlineInputBorder()),
           ),
+          if (_isExpense) ...[
+            const SizedBox(height: 12),
+            // قائمة أنواع المصروف: كهرباء ومياه، إيجار… أو اسم مكتوب باليد.
+            DropdownButtonFormField<String>(
+              value: _expenseType,
+              decoration: const InputDecoration(
+                labelText: 'نوع المصروف',
+                prefixIcon: Icon(Icons.category_outlined, size: 20),
+                border: OutlineInputBorder(),
+              ),
+              items: _expenseTypes
+                  .map((t) => DropdownMenuItem<String>(
+                        value: t.$1,
+                        child: Text(t.$2, style: const TextStyle(fontSize: 13.5)),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _expenseType = v ?? '6900'),
+            ),
+            if (_isCustomExpense) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _customNameController,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'اسم المصروف *',
+                  hintText: 'مثال: اشتراكات إنترنت، شحن طلبات، ضيافة…',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ],
           const SizedBox(height: 12),
           SegmentedButton<String>(
             segments: const [

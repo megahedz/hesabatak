@@ -72,6 +72,9 @@ class PurchaseInvoice(Base, TimestampMixin, CompanyScopedMixin):
     withholding_kind = Column(String(20), nullable=True)      # supply / service / consult
     withholding_rate = Column(Numeric(5, 2), nullable=False, default=0)
     withholding_amount = Column(Numeric(18, 2), nullable=False, default=0)
+    # رقم فاتورة المورد الأصلية (اختياري) — يُدخله المستخدم عند تسجيل الشراء
+    # لمطابقة فاتورة المورد الورقية في كشف حسابه.
+    supplier_invoice_no = Column(String(50), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("company_id", "invoice_number", name="uq_purchase_invoice_number_per_company"),

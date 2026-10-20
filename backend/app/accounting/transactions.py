@@ -166,6 +166,7 @@ def record_purchase(
     items: Optional[list[dict]] = None,
     withholding_kind: Optional[str] = None,
     withholding_rate: Optional[Decimal] = None,
+    supplier_invoice_no: Optional[str] = None,
 ) -> PurchaseInvoice:
     """
     No items  → behaves exactly as before: one amount, debited to Inventory
@@ -212,6 +213,7 @@ def record_purchase(
         withholding_kind=withholding_kind if wh_amount > 0 else None,
         withholding_rate=wh_rate,
         withholding_amount=wh_amount,
+        supplier_invoice_no=supplier_invoice_no.strip()[:50] if supplier_invoice_no and supplier_invoice_no.strip() else None,
         status=DocumentStatus.CONFIRMED,
     )
     db.add(invoice)

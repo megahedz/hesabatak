@@ -7,6 +7,16 @@ import '../../core/session.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 
+/// نتيجة نموذج تأسيس الشركة: الاسم + مكوّنات رأس المال
+/// (نقدية + أصول مُنفقة على الشركة) — تُعرض في رسالة ما بعد الإنشاء.
+class _CompanySetup {
+  const _CompanySetup({required this.name, required this.cash, required this.assets});
+  final String name;
+  final double cash;
+  final double assets;
+  double get total => cash + assets;
+}
+
 /// شاشة الدخول — نفس لغة التصميم المرجعي: خلفية فاتحة بلمسات زرقاء ناعمة،
 /// شعار حساباتك في الأعلى، ثم بطاقة بيضاء بها الحقول وزر أزرق «تسجيل الدخول».
 /// تتعامل مع الدخول وإنشاء الحساب الأول معًا (spec §56/§57).
@@ -173,6 +183,8 @@ class _LoginScreenState extends State<LoginScreen> {
   /// prompt them to create their first company right here (spec §56/§57's
   /// onboarding — "ابدأ الآن" → إنشاء الشركة — folded into the login flow
   /// so a brand-new user doesn't hit a dead end after registering).
+  /// بعد الإنشاء مباشرة تظهر رسالة تأسيس فيها مقدار رأس المال ووصفه
+  /// (نقدية في الخزينة + أصول مُنفقة على الشركة) ويُقيَّد على السيرفر.
   Future<void> _resolveActiveCompany() async {
     try {
       final companies = await _api.listMyCompanies();
@@ -182,10 +194,26 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       if (!mounted) return;
-      final companyName = await _promptForCompanyName();
-      if (companyName == null || companyName.isEmpty) return;
-      final created = await _api.createCompany(name: companyName);
-      AppSession.instance.setActiveCompany(id: created['id'] as int, name: created['name'] as String);
+      final setup = await _promptForCompanySetup();
+      if (setup == null || setup.name.isEmpty) return;
+      final created = await _api.createCompany(name: setup.name);
+      final companyId = created['id'] as int;
+      AppSession.instance.setActiveCompany(id: companyId, name: created['name'] as String);
+
+      // رسالة التأسيس: نقيّد رأس المال (نقدية + أصول) ثم نعرض الملخّص.
+      var capitalPosted = false;
+      if (setup.total > 0) {
+        try {
+          await _api.postCapital(
+            companyId: companyId, amount: setup.cash, assetsAmount: setup.assets);
+          capitalPosted = true;
+        } catch (_) {
+          capitalPosted = false; // تُعرض رسالة «أضفه لاحقًا» بدل فشل التسجيل
+        }
+      }
+      if (!mounted) return;
+      await _showCompanyCreated(created['name'] as String, setup,
+          capitalPosted: capitalPosted);
     } on ApiNetworkException {
       if (mounted) {
         setState(() => _error = 'تعذر الاتصال بالسيرفر. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.');
@@ -197,9 +225,13 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<String?> _promptForCompanyName() {
-    final controller = TextEditingController();
-    return showDialog<String>(
+  /// نموذج تأسيس الشركة: الاسم + مكوّنات رأس المال المطلوب عرضها في رسالة
+  /// ما بعد الإنشاء. القيم اختيارية (0 = بدون رأس مال الآن).
+  Future<_CompanySetup?> _promptForCompanySetup() {
+    final nameController = TextEditingController();
+    final cashController = TextEditingController();
+    final assetsController = TextEditingController();
+    return showDialog<_CompanySetup>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => Directionality(
@@ -207,26 +239,123 @@ class _LoginScreenState extends State<LoginScreen> {
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('أهلاً بك في حساباتك'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('تابع شغلك واعرف مكسبك بسهولة. ابدأ بإدخال اسم مشروعك:'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'اسم المشروع أو المحل'),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('تابع شغلك واعرف مكسبك بسهولة. ابدأ بإدخال اسم مشروعك:'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'اسم المشروع أو المحل'),
+                ),
+                const SizedBox(height: 16),
+                const Text('رأس المال (اختياري)',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                const SizedBox(height: 4),
+                const Text(
+                  'اكتب مقدار رأس المال وتوزيعه: النقدي في الخزينة، وقيمة الأصول التي صرفتها على الشركة (معدات/أثاث/بضاعة).',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: cashController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'نقدية في الخزينة', suffixText: 'ج.م'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: assetsController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'أصول (ما تم صرفه على الشركة)',
+                    hintText: 'معدات، أثاث، بضاعة…',
+                    suffixText: 'ج.م',
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('ابدأ الآن')),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(_CompanySetup(
+                name: nameController.text.trim(),
+                cash: _nonNegative(cashController.text),
+                assets: _nonNegative(assetsController.text),
+              )),
+              child: const Text('ابدأ الآن'),
+            ),
           ],
         ),
       ),
     );
   }
+
+  static double _nonNegative(String raw) {
+    final v = double.tryParse(raw.trim()) ?? 0;
+    return v > 0 ? v : 0;
+  }
+
+  /// رسالة ما بعد إنشاء الشركة: مقدار رأس المال ووصفه (نقدية + أصول).
+  Future<void> _showCompanyCreated(String companyName, _CompanySetup setup,
+      {required bool capitalPosted}) async {
+    final total = setup.total;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('تم إنشاء شركتك ✓'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('الشركة: $companyName',
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
+              const SizedBox(height: 12),
+              if (total > 0) ...[
+                Text('مقدار رأس المال: ${AppFmt.money(total)}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                const SizedBox(height: 8),
+                _capitalLine('نقدية في الخزينة', setup.cash),
+                const SizedBox(height: 4),
+                _capitalLine('أصول (ما تم صرفه على الشركة)', setup.assets),
+                const SizedBox(height: 10),
+                Text(
+                  capitalPosted
+                      ? 'سُجِّل رأس المال قيدًا محاسبيًا: نقدية/أصول مدين — رأس المال دائن.'
+                      : 'تعذر تسجيل رأس المال الآن — أضِفه لاحقًا من «إيداع رأس مال».',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: capitalPosted ? AppColors.greenDark : AppColors.red),
+                ),
+              ] else
+                const Text('لم تُدخل رأس مالًا الآن — يمكنك إضافته لاحقًا من «إيداع رأس مال».',
+                    style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+            ],
+          ),
+          actions: [
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ابدأ')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _capitalLine(String label, double value) => Row(
+        children: [
+          const Icon(Icons.circle, size: 8, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+          Text(AppFmt.money(value),
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy)),
+        ],
+      );
 
   /// الدخول بجوجل: الربط مع السيرفر (OAuth) لم يكتمل بعد — نوضح للمستخدم
   /// ماذا سيتاح قريبًا بدل زر صامت لا يفعل شيئًا.

@@ -47,6 +47,8 @@ NEW_COLUMNS: dict[str, list[tuple[str, str, str | None]]] = {
         ("withholding_kind", "VARCHAR(20)", None),
         ("withholding_rate", "NUMERIC(5,2)", "0"),
         ("withholding_amount", "NUMERIC(18,2)", "0"),
+        # رقم فاتورة المورد الأصلية (0.7.13) — عمود نصي اختياري بلا DEFAULT.
+        ("supplier_invoice_no", "VARCHAR(50)", None),
     ],
 }
 

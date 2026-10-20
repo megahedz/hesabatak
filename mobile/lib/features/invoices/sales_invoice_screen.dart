@@ -601,24 +601,47 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
               ),
             ],
           ),
-          // وصف البند — إجباري للبنود بدون صنف معرّف (خدمة)، اختياري لغيرها.
+          // وصف البند + خصم البند — إجباري للبنود بدون صنف معرّف (خدمة)، اختياري لغيرها.
           Padding(
             padding: const EdgeInsets.only(top: 6, right: 36),
-            child: TextField(
-              controller: item.descController,
-              style: const TextStyle(fontSize: 12.5),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: item.productId == null
-                    ? 'وصف الخدمة (إجباري) — مثال: إعداد عقد إيجار'
-                    : 'وصف إضافي (اختياري)',
-                hintStyle: TextStyle(
-                    fontSize: 11.5,
-                    color: item.productId == null ? AppColors.amber : AppColors.textSecondary),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onChanged: (v) => item.description = v,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: item.descController,
+                    style: const TextStyle(fontSize: 12.5),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: item.productId == null
+                          ? 'وصف الخدمة (إجباري) — مثال: إعداد عقد إيجار'
+                          : 'وصف إضافي (اختياري)',
+                      hintStyle: TextStyle(
+                          fontSize: 11.5,
+                          color: item.productId == null ? AppColors.amber : AppColors.textSecondary),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onChanged: (v) => item.description = v,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 96,
+                  child: TextField(
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12.5),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'خصم',
+                      hintStyle: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onChanged: (v) => setState(() => item.discount = double.tryParse(v) ?? 0),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
