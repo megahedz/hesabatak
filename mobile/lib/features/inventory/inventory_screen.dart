@@ -159,7 +159,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'لو أدخلت كمية افتتاحية سيُسجَّل مخزونها كمساهمة من رأس المال (تحتاج سعر شراء).',
+                    'لو أدخلت كمية افتتاحية سيُسجَّل رصيدها كمساهمة من رأس المال (تحتاج سعر شراء).',
                     style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
                   ),
                 ] else ...[
@@ -233,7 +233,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppHeader(title: _catalogMode ? 'الأصناف' : 'المخزون'),
+      appBar: AppHeader(title: 'الأصناف'),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
@@ -373,7 +373,7 @@ class _ErrorState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('تعذر تحميل المخزون. تأكد من الاتصال وحاول مرة أخرى.',
+          const Text('تعذر تحميل الأصناف. تأكد من الاتصال وحاول مرة أخرى.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 12),

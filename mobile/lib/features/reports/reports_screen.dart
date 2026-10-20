@@ -63,7 +63,7 @@ class _ReportsScreenState extends State<ReportsScreen> with SingleTickerProvider
                 Tab(text: 'المبيعات'),
                 Tab(text: 'المشتريات'),
                 Tab(text: 'المبيعات بالصنف'),
-                Tab(text: 'المخزون'),
+                Tab(text: 'الأصناف'),
                 Tab(text: 'ميزان المراجعة'),
                 Tab(text: 'الميزانية'),
                 Tab(text: 'الأرباح والخسائر'),
@@ -342,7 +342,7 @@ class _DetailedReportListState extends State<_DetailedReportList> {
         final data = snapshot.data!;
         final rows = (data['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
         final totals = data['totals'] as Map<String, dynamic>;
-        final totalLabel = totals['total'] != null ? 'الإجمالي' : 'قيمة المخزون';
+        final totalLabel = totals['total'] != null ? 'الإجمالي' : 'قيمة الأصناف';
         final totalValue = totals['total'] ?? totals['stock_value'];
         return ListView(
           padding: const EdgeInsets.all(16),

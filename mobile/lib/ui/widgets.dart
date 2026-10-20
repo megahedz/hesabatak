@@ -603,7 +603,6 @@ Color _colorFor(String section) {
       return AppColors.primary;
     case 'الموردون':
       return AppColors.amber;
-    case 'المخزون':
     case 'الأصناف':
       return AppColors.amber;
     case 'الخزنة والبنك':

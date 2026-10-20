@@ -360,7 +360,7 @@ def create_product(
     # catalog_mode: تعريف فقط — لا مخزون افتتاحي ولا قيد مساهمة رأس مال.
     if opening_stock_qty > 0 and not company.catalog_mode:
         if purchase_price <= 0:
-            raise HTTPException(400, "لا يمكن إضافة مخزون افتتاحي بدون تكلفة شراء صحيحة.")
+            raise HTTPException(400, "لا يمكن إضافة رصيد افتتاحي بدون تكلفة شراء صحيحة.")
         opening_stock_value(
             db, company_id=company_id, entry_date=date.today(), product=product,
             quantity=opening_stock_qty, unit_cost=purchase_price,
@@ -368,7 +368,7 @@ def create_product(
         AccountingService.create_opening_stock(
             db, company_id=company_id, entry_date=date.today(),
             amount=opening_stock_qty * purchase_price,
-            description=f"مخزون افتتاحي - {product.name}",
+            description=f"بضاعة افتتاحية - {product.name}",
         )
     db.commit()
     return {"id": product.id, "name": product.name}
@@ -1271,13 +1271,13 @@ def notifications(company_id: int, db: Session = Depends(get_db)):
         if stock <= 0:
             alerts.append({
                 "kind": "stock_out", "severity": "error", "icon": "warning",
-                "title": f"نفد المخزون: {p.name}",
+                "title": f"نفد الرصيد: {p.name}",
                 "body": f"الرصيد الحالي صفر (الحد الأدنى {AppFmt_num(minimum)}).",
             })
         elif stock <= minimum:
             alerts.append({
                 "kind": "stock_low", "severity": "warning", "icon": "warning",
-                "title": f"مخزون منخفض: {p.name}",
+                "title": f"رصيد منخفض: {p.name}",
                 "body": f"الرصيد {AppFmt_num(stock)} — الحد الأدنى {AppFmt_num(minimum)}.",
             })
 

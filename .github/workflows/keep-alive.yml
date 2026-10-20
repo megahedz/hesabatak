@@ -1,0 +1,27 @@
+name: Keep backend awake (Render free tier)
+
+# الخطة المجانية على Render بتنام بعد ~15 دقيقة بدون طلبات، وأول مستخدم
+# بيفتح التطبيق بعد كده بيستنى حتى ~45 ثانية لاستيقاظ السيرفر. مهمة مجدولة
+# بتبعت GET /health كل 8 دقائق تمنع النوم نهائيًا (متأخر cron بض دقائق ما زال
+# ضمن هامش الـ 15 دقيقة).
+on:
+  schedule:
+    - cron: "*/8 * * * *"
+  workflow_dispatch:   # تشغيل يدوي للاختبار
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake / keep the Render service
+        run: |
+          URL="https://hesabatak-backend-srps.onrender.com/health"
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$URL" || true)
+          echo "GET /health -> $code"
+          # لو كان نايم (أو شبكة فشلت)، ننتظر إيقاظه ونعيد المحاولة مرة واحدة.
+          if [ "$code" != "200" ]; then
+            sleep 50
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 "$URL" || true)
+            echo "retry -> $code"
+          fi
+          [ "$code" = "200" ]

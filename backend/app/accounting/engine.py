@@ -366,7 +366,7 @@ class AccountingService:
     # ------------------------------------------------------------------
     @staticmethod
     def create_opening_stock(db: Session, *, company_id: int, entry_date: date,
-                              amount: Decimal, description: str = "مخزون افتتاحي") -> JournalEntry:
+                              amount: Decimal, description: str = "بضاعة افتتاحية") -> JournalEntry:
         amount = money(amount)
         return AccountingService._post(
             db, company_id=company_id, entry_date=entry_date, reference_type="opening_stock",

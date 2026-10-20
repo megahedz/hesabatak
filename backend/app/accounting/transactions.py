@@ -185,7 +185,7 @@ def record_purchase(
     if items:
         if not goes_to_inventory and not catalog_mode:
             raise AccountingError(
-                "شراء منتجات محددة يدخل المخزون تلقائيًا — لا يمكن تسجيله كمصروف مباشر."
+                "شراء منتجات محددة يُرحَّل تكلفتها تلقائيًا — لا يمكن تسجيله كمصروف مباشر."
             )
         resolved_items = _validate_products(db, company_id, items, default="purchase")
         items_total = sum((money(q * p) for _, q, p, _ in resolved_items), Decimal("0.00"))

@@ -540,7 +540,7 @@ def _restore_in_session(db: Session, company_id: int, payload: dict) -> int:
     ):
         p = products.get(m.product_id)
         if p is None:
-            raise RestoreError("حركة مخزون تشير لمنتج غير موجود — الملف تالف.")
+            raise RestoreError("حركة رصيد تشير لمنتج غير موجود — الملف تالف.")
         qty = m.quantity.quantize(QTY_PLACES)
         cost = m.unit_cost.quantize(COST_PLACES)
         stock = Decimal(p.current_stock or 0).quantize(QTY_PLACES)

@@ -221,7 +221,7 @@ class _InvoiceFormState extends State<_InvoiceForm> {
             CheckboxListTile(
               value: _goesToInventory,
               onChanged: (v) => setState(() => _goesToInventory = v ?? false),
-              title: const Text('بضاعة تُضاف للمخزون'),
+              title: const Text('بضاعة تُضاف إلى رصيد الأصناف'),
               subtitle: const Text('اتركها فارغة إذا كان الشراء مصروفًا تشغيليًا وليس بضاعة للبيع'),
               controlAffinity: ListTileControlAffinity.leading,
               contentPadding: EdgeInsets.zero,

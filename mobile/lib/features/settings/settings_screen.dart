@@ -8,7 +8,7 @@ import '../dashboard/dashboard_screen.dart' show showBackupSheet;
 import '../home/home_shell.dart';
 import 'team_screen.dart';
 
-/// الإعدادات — بيانات المشروع، إعدادات الضريبة والمخزون والسنة المالية،
+/// الإعدادات — بيانات المشروع، إعدادات الضريبة والسنة المالية،
 /// النسخ الاحتياطي والاستعادة، وتسجيل الخروج — بنفس نظام التصميم.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -214,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 14),
 
-                      // ===== الضريبة والمخزون (التعديل للمالك فقط) =====
+                      // ===== الضريبة (التعديل للمالك فقط) =====
                       SectionCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   size: 40,
                                 ),
                                 SizedBox(width: 10),
-                                Text('الضريبة والمخزون',
+                                Text('الضرائب',
                                     style: TextStyle(
                                         fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.navy)),
                               ],

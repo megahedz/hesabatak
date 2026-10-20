@@ -13,7 +13,6 @@ import '../inventory/inventory_screen.dart';
 import '../treasury/treasury_screen.dart';
 import '../assets/fixed_assets_screen.dart';
 import '../reports/reports_screen.dart';
-import '../operations/quick_actions_sheet.dart';
 import '../settings/settings_screen.dart';
 
 /// الأقسام الرئيسية الـ 11 (كالتصميم المرجعي تمامًا) — تُعرض في القائمة
@@ -39,8 +38,8 @@ class HomeShell extends StatefulWidget {
     ('الإعدادات', Icons.settings_rounded),
   ];
 
-  /// يطلقه البار السفلي بعد نجاح أي عملية سريعة حتى تعيد الشاشة الظاهرة
-  /// تحميل بياناتها فورًا (إشارة يلتقطها الداشبورد).
+  /// يُطلق بعد نجاح أي عملية سريعة حتى تعيد الشاشة الظاهرة تحميل بياناتها
+  /// فورًا (إشارة يلتقطها الداشبورد).
   static ValueChanged<String>? onSectionRefresh;
 
   static void refreshCurrent() {
@@ -88,8 +87,6 @@ class _HomeShellState extends State<HomeShell> {
           Expanded(child: _buildScreen(_current)),
         ],
       ),
-      // ===== بار سفلي: أزرار العملية الأكثر استخدامًا في متناول الإبهام =====
-      bottomNavigationBar: const _QuickBar(),
     );
   }
 
@@ -224,97 +221,4 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// البار السفلي السريع: خمس عمليات في متناول الإبهام من أي شاشة —
-/// بيع، شراء، مصروف، سداد لعميل (قبض)، استلام من مورد (دفع).
-/// كل زر يفتح نفس نماذج العمليات السريعة الموجودة في الرئيسية، وبعد نجاح
-/// العملية تعيد الشاشة الحالية تحميل بياناتها عبر [HomeShell.refresh].
-class _QuickBar extends StatelessWidget {
-  const _QuickBar();
 
-  // (label, icon, color) — parallel lists بدل records لتفادي أي اختلاف إصدار.
-  static const _labels = ['بيع', 'شراء', 'مصروف', 'سداد', 'استلام'];
-  static const _icons = [
-    Icons.point_of_sale_rounded,
-    Icons.shopping_cart_rounded,
-    Icons.receipt_long_rounded,
-    Icons.south_rounded,
-    Icons.north_rounded,
-  ];
-  static const _colors = [
-    AppColors.green,
-    AppColors.primary,
-    AppColors.red,
-    AppColors.amber,
-    AppColors.teal,
-  ];
-
-  /// اسم العملية في showQuickActionSheet لكل زر.
-  static const _actionNames = ['بيع', 'شراء', 'مصروف', 'قبض من عميل', 'دفع لمورد'];
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.navy.withOpacity(0.07),
-              blurRadius: 12,
-              offset: const Offset(0, -3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            for (var i = 0; i < _labels.length; i++)
-              Expanded(child: _QuickBarButton(index: i)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickBarButton extends StatelessWidget {
-  const _QuickBarButton({required this.index});
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = _QuickBar._labels[index];
-    final icon = _QuickBar._icons[index];
-    final color = _QuickBar._colors[index];
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        showQuickActionSheet(
-          context,
-          action: _QuickBar._actionNames[index],
-          onDone: () => HomeShell.refreshCurrent(),
-        );
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, size: 22, color: color),
-            ),
-            const SizedBox(height: 4),
-            Text(label,
-                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.navy)),
-          ],
-        ),
-      ),
-    );
-  }
-}

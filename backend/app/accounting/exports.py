@@ -343,15 +343,15 @@ def _inventory_spec(db: Session, company_id: int, start, end) -> ExportSpec:
         for r in rep["rows"]
     ]
     t = rep["totals"]
-    headers = ["المنتج", "الكود", "الوحدة", "الرصيد", "متوسط التكلفة", "قيمة المخزون", "الحالة"]
+    headers = ["المنتج", "الكود", "الوحدة", "الرصيد", "متوسط التكلفة", "قيمة الرصيد", "الحالة"]
     return ExportSpec(
-        title="تقرير المخزون", subtitle="القيمة الحالية بتكلفة المتوسط المرجح",
+        title="تقرير الأصناف", subtitle="القيمة الحالية بتكلفة المتوسط المرجح",
         headers=headers, rows=rows,
-        totals=[("عدد الأصناف", t["items"]), ("قيمة المخزون بالتكلفة", t["stock_value"]),
+        totals=[("عدد الأصناف", t["items"]), ("قيمة الأصناف بالتكلفة", t["stock_value"]),
                 ("القيمة البيعية", t["retail_value"]), ("الهامش المتوقع", t["expected_margin"]),
                 ("أصناف منخفضة أو نافدة", t["low_or_out"])],
-        file_name="hesabatak-inventory", display_name="تقرير-المخزون",
-        sheets=[("المخزون", headers, rows)],
+        file_name="hesabatak-inventory", display_name="تقرير-الأصناف",
+        sheets=[("الأصناف", headers, rows)],
     )
 
 

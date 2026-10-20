@@ -89,7 +89,7 @@ def consume_stock(db: Session, *, company_id: int, entry_date: date, product: Pr
     current_qty = _q(Decimal(product.current_stock or 0), QTY_PLACES)
     if quantity > current_qty:
         raise AccountingError(
-            f"الكمية المطلوبة من «{product.name}» أكبر من المخزون المتاح "
+            f"الكمية المطلوبة من «{product.name}» أكبر من الرصيد المتاح "
             f"({current_qty} {product.unit})."
         )
     avg = _q(Decimal(product.purchase_price or 0), COST_PLACES)
