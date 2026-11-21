@@ -67,6 +67,8 @@ Future<String?> _pickFormat(BuildContext context) async {
           onPressed: () => Navigator.of(ctx).pop('excel'),
           icon: const Icon(Icons.grid_on_outlined),
           label: const Text('Excel'),
+          compact: true,
+          height: 40,
         ),
       ],
     ),

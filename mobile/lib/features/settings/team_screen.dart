@@ -228,6 +228,7 @@ class _TeamScreenState extends State<TeamScreen> {
               onPressed: () => Navigator.of(dialogCtx).pop(true),
               colors: AppGradients.danger,
               compact: true,
+              height: 40,
               child: const Text('إزالة'),
             ),
           ],

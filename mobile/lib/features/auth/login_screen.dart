@@ -289,6 +289,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 cash: _nonNegative(cashController.text),
                 assets: _nonNegative(assetsController.text),
               )),
+              compact: true,
+              height: 40,
               child: const Text('ابدأ الآن'),
             ),
           ],
@@ -343,7 +345,12 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
           actions: [
-            GradientButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ابدأ')),
+            GradientButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              compact: true,
+              height: 40,
+              child: const Text('ابدأ'),
+            ),
           ],
         ),
       ),

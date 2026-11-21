@@ -317,34 +317,38 @@ class _QuickActionsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 4,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 8,
-      mainAxisSpacing: 12,
-      childAspectRatio: 0.85,
-      children: [for (var i = 0; i < _labels.length; i++) InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => showQuickActionSheet(context, action: _labels[i], onDone: onDone),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconTile(
-                icon: _icons[i],
-                background: _bgs[i],
-                color: _fgs[i],
-                size: 46,
+    // Wrap ببلاطات ثابتة العرض بدل GridView: خلايا الشبكة تتسع مع عرض البطاقة
+    // فتترك فراغًا رأسيًا ضخمًا على الويب، أما البلاكات فتبقى بارتفاع محتواها
+    // وتلتفّ تلقائيًا (4 في الهاتف، 8 في صف واحد على الشاشة العريضة).
+    return Wrap(
+      spacing: 12,
+      runSpacing: 16,
+      children: [
+        for (var i = 0; i < _labels.length; i++)
+          SizedBox(
+            width: 104,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => showQuickActionSheet(context, action: _labels[i], onDone: onDone),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconTile(
+                    icon: _icons[i],
+                    background: _bgs[i],
+                    color: _fgs[i],
+                    size: 46,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(_labels[i],
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      style: const TextStyle(fontSize: 10.5, color: AppColors.navy)),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text(_labels[i],
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  style: const TextStyle(fontSize: 10.5, color: AppColors.navy)),
-            ],
+            ),
           ),
-        ),
-      ]
+      ],
     );
   }
 }
@@ -468,6 +472,8 @@ Future<void> _restoreFromPicker(BuildContext context, ApiClient api) async {
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
           GradientButton(
             onPressed: () => Navigator.of(dialogContext).pop(restoreText.trim() == 'استعادة'),
+            compact: true,
+            height: 40,
             child: const Text('استعادة'),
           ),
         ],

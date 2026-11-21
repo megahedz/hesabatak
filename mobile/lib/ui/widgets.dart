@@ -123,7 +123,8 @@ class _GradientButtonState extends State<GradientButton> {
         borderRadius: BorderRadius.circular(radius),
         boxShadow: widget.colors == AppGradients.button ? AppGradients.buttonGlow : null,
       ),
-      // النواة الداكنة تختفي عند الهوفر (أو أثناء الضغط) فيظهر التدرّج كاملًا.
+      // عند الهوفر/الضغط يظهر التدرّج كاملًا لكن خلف طبقة كحلية شبه شفافة،
+      // لأن النص أبيض: سيان #00DDEB خالصًا يعطي تباينًا ~1.6:1 (غير مقروء).
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
@@ -132,19 +133,27 @@ class _GradientButtonState extends State<GradientButton> {
           horizontal: widget.compact ? 14 : 20,
           vertical: widget.compact ? 0 : 6,
         ),
-        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: (_hover || _pressed) && enabled ? Colors.transparent : AppColors.ink,
+          color: (_hover || _pressed) && enabled
+              ? AppColors.ink.withOpacity(0.55)
+              : AppColors.ink,
           borderRadius: BorderRadius.circular(radius - 2.5),
         ),
-        child: content,
+        // Center بعوامل 1 يلفّ المحتوى بحجمه الطبيعي (بدل التمدد لعرض الحاوية)
+        // مع توسيطه رأسيًا داخل minHeight — فأزرار الحوار تبقى بعرض نصّها لا
+        // بعرض النافذة، والأزرار الممتدة يحددها expand.
+        child: Center(widthFactor: 1, heightFactor: 1, child: content),
       ),
     );
 
     body = AnimatedScale(
       scale: _pressed ? 0.94 : 1,
       duration: const Duration(milliseconds: 120),
-      child: Opacity(opacity: enabled ? 1 : 0.5, child: body),
+      // التحميل يخفض الشفافية قليلًا فقط: النص «جارٍ تسجيل الدخول…» يبقى مقروءًا.
+      child: Opacity(
+        opacity: enabled ? 1 : (widget.loading ? 0.9 : 0.5),
+        child: body,
+      ),
     );
 
     body = Semantics(
