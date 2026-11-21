@@ -31,6 +31,15 @@ jobs:
           flutter-version: "3.35.0"
           channel: "stable"
 
+      # Java 17 مثبت صراحةً: صورة ubuntu-latest تغيّرت فصار الافتراضي JDK أحدث
+      # من أن يفهمه Gradle/AGP المولّد من Flutter 3.35، فيفشل "Build release APK"
+      # بعد ثوانٍ. نفس البناء ينجح محليًا على Temurin 17.
+      - name: Set up Java 17 (Gradle/AGP compatible)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Generate missing Android platform scaffold
         working-directory: mobile
         run: flutter create --platforms=android --org com.hesabatak .
