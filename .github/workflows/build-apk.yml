@@ -102,11 +102,28 @@ jobs:
           echo "hesabatak-$VERSION.apk"
           ls -la "$OUT"
 
+      # تنبيه مهم: مرفقات Actions عند GitHub بتكون دايمًا ملف ZIP (ده سلوك
+      # المنصة نفسها، مش إعداد في المشروع). الملف غير المضغوط هو الـ APK اللي
+      # بيتحط في Releases، ولينكه بيتكتب في ملخص التشغيل تحت.
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: hesabatak-app
+          name: hesabatak-app-zip
           path: mobile/build/app/outputs/flutter-apk/hesabatak-*.apk
+
+      - name: Point to the uncompressed APK (Releases, not a ZIP)
+        run: |
+          VERSION=$(grep '^version:' mobile/pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
+          URL="https://github.com/${{ github.repository }}/releases/tag/v$VERSION"
+          {
+            echo "## تحميل الـ APK (ملف .apk مباشر — بدون ZIP)"
+            echo ""
+            echo "- مباشر: $URL"
+            echo "- دائمًا آخر إصدار: https://github.com/${{ github.repository }}/releases/latest"
+            echo ""
+            echo "الـ artifact \"hesabatak-app-zip\" هنا ZIP (GitHub بيلف كل المرفقات في ZIP)."
+            echo "الملف الجوه، غير المضغوط، هو hesabatak-$VERSION.apk في صفحة الـ Release."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ========================================================================
   # نسخة الويب: نفس الكود يُبنى للمتصفح ويُنشر على GitHub Pages — يفتح من
@@ -197,7 +214,7 @@ jobs:
       - name: Download built APK
         uses: actions/download-artifact@v4
         with:
-          name: hesabatak-app
+          name: hesabatak-app-zip
           path: dist
 
       - name: Prepare release files (نسخة مرقمة + نسخة latest)
@@ -224,3 +241,15 @@ jobs:
             --notes "نزّل hesabatak-$V.apk مباشرة (ملف APK وليس ZIP) وثبّته على الهاتف."
           echo "--- release assets ---"
           gh release view "$TAG" --json assets -q '.assets[].name'
+
+      - name: Print direct .apk download links
+        run: |
+          V=${{ steps.ver.outputs.version }}
+          BASE="https://github.com/${{ github.repository }}/releases/download/v$V"
+          {
+            echo "## الـ APK مباشر (غير مضغوط)"
+            echo ""
+            echo "- hesabatak-$V.apk: $BASE/hesabatak-$V.apk"
+            echo "- hesabatak-latest.apk: $BASE/hesabatak-latest.apk"
+            echo "- آخر إصدار دائمًا: https://github.com/${{ github.repository }}/releases/latest"
+          } >> "$GITHUB_STEP_SUMMARY"
