@@ -74,7 +74,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   const Text('تعذر تحميل قائمة العملاء.',
                       style: TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 8),
-                  FilledButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                  GradientButton(onPressed: _load, child: const Text('إعادة المحاولة')),
                 ],
               ),
             );
@@ -87,7 +87,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    FilledButton.icon(
+                    GradientButton.icon(
                       onPressed: _openAddCustomerSheet,
                       icon: const Icon(Icons.person_add_alt, size: 20),
                       label: const Text('إضافة عميل'),
@@ -223,7 +223,7 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
             const SizedBox(height: 12),
             AttachmentField(ownerKind: 'customer', ownerId: _createdId!),
             const SizedBox(height: 12),
-            FilledButton(
+            GradientButton(
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('تم'),
             ),
@@ -259,7 +259,7 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
             ),
           ),
           const SizedBox(height: 20),
-          FilledButton(
+          GradientButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))

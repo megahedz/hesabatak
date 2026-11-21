@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
 import 'share_downloader.dart';
+import '../../ui/widgets.dart';
 
 /// Phase 6 (spec §39/§40): download a report as PDF/Excel from the backend
 /// and hand it to the platform — Android share sheet on mobile, direct
@@ -62,7 +63,7 @@ Future<String?> _pickFormat(BuildContext context) async {
           icon: const Icon(Icons.picture_as_pdf_outlined),
           label: const Text('PDF'),
         ),
-        FilledButton.icon(
+        GradientButton.icon(
           onPressed: () => Navigator.of(ctx).pop('excel'),
           icon: const Icon(Icons.grid_on_outlined),
           label: const Text('Excel'),

@@ -132,7 +132,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 decoration: const InputDecoration(labelText: 'المبلغ', suffixText: 'ج.م'),
               ),
               const SizedBox(height: 16),
-              FilledButton(
+              GradientButton(
                 onPressed: saving
                     ? null
                     : () async {
@@ -202,7 +202,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                         ],
                       ),
                       const SizedBox(height: 14),
-                      FilledButton.icon(
+                      GradientButton.icon(
                         onPressed: _transfer,
                         icon: const Icon(Icons.swap_horiz_rounded, size: 20),
                         label: const Text('تحويل بين الخزينة والبنك'),
@@ -325,7 +325,7 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 12),
-          FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
+          GradientButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
         ],
       ),
     );

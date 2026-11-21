@@ -300,7 +300,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       if (!_canManageSettings)
                         const SizedBox.shrink()
                       else
-                        FilledButton.icon(
+                        GradientButton.icon(
                         onPressed: _saving ? null : _save,
                         icon: _saving
                             ? const SizedBox(
@@ -399,7 +399,7 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 12),
-          FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
+          GradientButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
         ],
       ),
     );

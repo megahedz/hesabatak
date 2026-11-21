@@ -363,7 +363,7 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 12),
-          FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
+          GradientButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
         ],
       ),
     );
@@ -395,7 +395,7 @@ Future<void> showBackupSheet(BuildContext context) async {
             const Text('خذ نسخة كاملة من بيانات مشروعك، أو استعد نسخة سابقة. الاستعادة تستبدل كل البيانات الحالية.',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
             const SizedBox(height: 16),
-            FilledButton.icon(
+            GradientButton.icon(
               icon: const Icon(Icons.download_outlined),
               label: const Text('تنزيل نسخة احتياطية'),
               onPressed: () async {
@@ -466,7 +466,7 @@ Future<void> _restoreFromPicker(BuildContext context, ApiClient api) async {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
-          FilledButton(
+          GradientButton(
             onPressed: () => Navigator.of(dialogContext).pop(restoreText.trim() == 'استعادة'),
             child: const Text('استعادة'),
           ),

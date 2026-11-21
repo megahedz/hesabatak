@@ -125,7 +125,7 @@ class _TeamScreenState extends State<TeamScreen> {
                 style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),
-              FilledButton(
+              GradientButton(
                 onPressed: saving
                     ? null
                     : () async {
@@ -224,9 +224,10 @@ class _TeamScreenState extends State<TeamScreen> {
           content: Text('سيتم إزالة ${member['full_name']} من الوصول إلى بيانات هذه الشركة. بياناته المحاسبية ستبقى كما هي.'),
           actions: [
             TextButton(onPressed: () => Navigator.of(dialogCtx).pop(false), child: const Text('إلغاء')),
-            FilledButton(
+            GradientButton(
               onPressed: () => Navigator.of(dialogCtx).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.red),
+              colors: AppGradients.danger,
+              compact: true,
               child: const Text('إزالة'),
             ),
           ],
@@ -263,7 +264,7 @@ class _TeamScreenState extends State<TeamScreen> {
                       const Text('تعذر تحميل الفريق. تأكد من الاتصال.',
                           style: TextStyle(color: AppColors.textSecondary)),
                       const SizedBox(height: 12),
-                      FilledButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                      GradientButton(onPressed: _load, child: const Text('إعادة المحاولة')),
                     ],
                   ),
                 )
@@ -301,7 +302,7 @@ class _TeamScreenState extends State<TeamScreen> {
                       ),
                       const SizedBox(height: 14),
                       if (_isOwner)
-                        FilledButton.icon(
+                        GradientButton.icon(
                           onPressed: _addMember,
                           icon: const Icon(Icons.person_add_rounded, size: 20),
                           label: const Text('إضافة عضو'),

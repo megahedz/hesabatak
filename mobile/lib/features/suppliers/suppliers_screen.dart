@@ -73,7 +73,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                   const Text('تعذر تحميل قائمة الموردين.',
                       style: TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 8),
-                  FilledButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                  GradientButton(onPressed: _load, child: const Text('إعادة المحاولة')),
                 ],
               ),
             );
@@ -86,7 +86,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    FilledButton.icon(
+                    GradientButton.icon(
                       onPressed: _openAddSupplierSheet,
                       icon: const Icon(Icons.add_business, size: 20),
                       label: const Text('إضافة مورد'),
@@ -221,7 +221,7 @@ class _AddSupplierSheetState extends State<_AddSupplierSheet> {
             const SizedBox(height: 12),
             AttachmentField(ownerKind: 'supplier', ownerId: _createdId!),
             const SizedBox(height: 12),
-            FilledButton(
+            GradientButton(
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('تم'),
             ),
@@ -257,7 +257,7 @@ class _AddSupplierSheetState extends State<_AddSupplierSheet> {
             ),
           ),
           const SizedBox(height: 20),
-          FilledButton(
+          GradientButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))

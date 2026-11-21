@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show NumberFormat;
 import '../core/app_config.dart';
 import 'theme.dart';
+import '../../ui/widgets.dart';
 
 /// تنسيق الأرقام بفواصل الآلاف وأرقام لاتينية (كما في التصميم المرجعي).
 class AppFmt {
@@ -24,6 +25,151 @@ class AppFmt {
     if (value is int) return '${_fmt.format(value)} $currency';
     if (value is double) return '${_fmt.format(value)} $currency';
     return '0 $currency';
+  }
+}
+
+/// زر عصري بتدرّج بنفسجي → أزرق → سيان حول نواة كحلية داكنة (نمط Uiverse).
+/// على الويب/الديسكتوب تختفي النواة عند مرور الماوس فيظهر التدرّج كاملًا،
+/// والضغط يصغّر الزر قليلًا — نفس إحساس الـ CSS المرجعي.
+class GradientButton extends StatefulWidget {
+  const GradientButton({
+    super.key,
+    required this.onPressed,
+    required this.child,
+    this.icon,
+    this.loading = false,
+    this.expand = false,
+    this.height = 52,
+    this.colors = AppGradients.button,
+    this.compact = false,
+  });
+
+  const GradientButton.icon({
+    super.key,
+    required this.onPressed,
+    required Widget this.icon,
+    required Widget label,
+    this.loading = false,
+    this.expand = false,
+    this.height = 52,
+    this.colors = AppGradients.button,
+    this.compact = false,
+  }) : child = label;
+
+  final VoidCallback? onPressed;
+  final Widget child;
+  final Widget? icon;
+  final bool loading;
+  final bool expand;
+  final double height;
+  final List<Color> colors;
+  final bool compact;
+
+  @override
+  State<GradientButton> createState() => _GradientButtonState();
+}
+
+class _GradientButtonState extends State<GradientButton> {
+  bool _hover = false;
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onPressed != null && !widget.loading;
+    final radius = widget.compact ? 13.0 : 16.0;
+
+    // Wrap بدل Row: لا يحتاج عرضًا محددًا (يعمل داخل نوافذ الحوار والصفوف
+    // والأعمدة الممتدة على حد سواء) ويلف النص الطويل بدل أن يفيض.
+    final content = Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: widget.compact ? 6 : 9,
+      runSpacing: 4,
+      children: [
+        if (widget.loading)
+          const SizedBox(
+            width: 17,
+            height: 17,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          )
+        else if (widget.icon != null)
+          IconTheme.merge(
+            data: IconThemeData(color: Colors.white, size: widget.compact ? 17 : 20),
+            child: widget.icon!,
+          ),
+        DefaultTextStyle.merge(
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: widget.compact ? 13 : 15.5,
+            fontWeight: FontWeight.w800,
+            height: 1.2,
+          ),
+          child: IconTheme.merge(
+            data: const IconThemeData(color: Colors.white),
+            child: widget.child,
+          ),
+        ),
+      ],
+    );
+
+    Widget body = Container(
+      padding: const EdgeInsets.all(2.5),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: widget.colors,
+        ),
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: widget.colors == AppGradients.button ? AppGradients.buttonGlow : null,
+      ),
+      // النواة الداكنة تختفي عند الهوفر (أو أثناء الضغط) فيظهر التدرّج كاملًا.
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        constraints: BoxConstraints(minHeight: widget.height),
+        padding: EdgeInsets.symmetric(
+          horizontal: widget.compact ? 14 : 20,
+          vertical: widget.compact ? 0 : 6,
+        ),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: (_hover || _pressed) && enabled ? Colors.transparent : AppColors.ink,
+          borderRadius: BorderRadius.circular(radius - 2.5),
+        ),
+        child: content,
+      ),
+    );
+
+    body = AnimatedScale(
+      scale: _pressed ? 0.94 : 1,
+      duration: const Duration(milliseconds: 120),
+      child: Opacity(opacity: enabled ? 1 : 0.5, child: body),
+    );
+
+    body = Semantics(
+      button: true,
+      enabled: enabled,
+      child: MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() {
+          _hover = false;
+          _pressed = false;
+        }),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+          onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+          onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+          onTap: enabled ? widget.onPressed : null,
+          child: body,
+        ),
+      ),
+    );
+
+    if (!widget.expand) return body;
+    return SizedBox(width: double.infinity, child: body);
   }
 }
 
@@ -112,22 +258,47 @@ class StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [background, Color.lerp(background, Colors.white, 0.85)!],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.navy.withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: iconColor),
-              const SizedBox(width: 6),
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.75),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, size: 17, color: iconColor),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    height: 1.25,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
             ],
@@ -139,7 +310,8 @@ class StatCard extends StatelessWidget {
               value,
               style: const TextStyle(
                 fontSize: 20,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.4,
                 color: AppColors.navy,
               ),
             ),
@@ -186,12 +358,13 @@ class SectionCard extends StatelessWidget {
       padding: padding ?? const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border.withOpacity(0.7)),
         boxShadow: [
           BoxShadow(
             color: AppColors.navy.withOpacity(0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -484,24 +657,41 @@ class AppDrawer extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+            Container(
+              margin: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+              decoration: BoxDecoration(
+                gradient: AppGradients.brandGradient,
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.navy.withOpacity(0.22),
+                    blurRadius: 22,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
               child: Row(
                 children: [
                   const HesabatakLogo(size: 44),
                   const SizedBox(width: 10),
-                  const Text('حساباتك',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                  const Expanded(
+                    child: Text('حساباتك',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ),
                   const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.blueTint,
-                      borderRadius: BorderRadius.circular(10),
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(color: Colors.white.withOpacity(0.25)),
                     ),
                     child: Text(
                       'v${AppConfig.appVersion}',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                   ),
                 ],

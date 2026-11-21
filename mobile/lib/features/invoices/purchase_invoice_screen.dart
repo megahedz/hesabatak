@@ -342,14 +342,12 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
                   children: [
                     const Text('البنود',
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.navy)),
-                    FilledButton.icon(
+                    GradientButton.icon(
                       onPressed: () => setState(() => _items.add(_Item())),
                       icon: const Icon(Icons.add, size: 18),
                       label: const Text('إضافة صنف', style: TextStyle(fontSize: 12.5)),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 38),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                      ),
+                      compact: true,
+                      height: 38,
                     ),
                   ],
                 ),
@@ -465,13 +463,13 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
               const SizedBox(width: 10),
               Expanded(
                 flex: 2,
-                child: FilledButton.icon(
+                child: GradientButton.icon(
                   onPressed: _saving ? null : _save,
                   icon: _saving
                       ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.save_outlined, size: 18),
                   label: const Text('حفظ', style: TextStyle(fontSize: 14)),
-                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  height: 48,
                 ),
               ),
             ],

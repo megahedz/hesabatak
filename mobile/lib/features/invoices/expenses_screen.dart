@@ -152,7 +152,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              FilledButton(
+              GradientButton(
                 onPressed: saving
                     ? null
                     : () async {

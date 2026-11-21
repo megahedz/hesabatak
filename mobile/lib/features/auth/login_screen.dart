@@ -283,7 +283,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           actions: [
-            FilledButton(
+            GradientButton(
               onPressed: () => Navigator.of(ctx).pop(_CompanySetup(
                 name: nameController.text.trim(),
                 cash: _nonNegative(cashController.text),
@@ -343,7 +343,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
           actions: [
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ابدأ')),
+            GradientButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ابدأ')),
           ],
         ),
       ),
@@ -409,9 +409,9 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFEDF4FC), AppColors.background],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFF4EFFF), Color(0xFFEDF4FC), Color(0xFFE9FBF8)],
           ),
         ),
         child: SafeArea(
@@ -590,7 +590,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 6),
                           ],
-                          FilledButton(
+                          GradientButton(
                             onPressed: _loading ? null : _submit,
                             child: _loading
                                 ? Row(

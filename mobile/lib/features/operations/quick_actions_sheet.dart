@@ -5,6 +5,7 @@ import '../../ui/attachment_field.dart';
 import '../../ui/theme.dart';
 import '../customers/customer_model.dart';
 import '../suppliers/supplier_model.dart';
+import '../../ui/widgets.dart';
 
 /// Opens the right quick-entry form for a dashboard action. All eight
 /// operations from the spec are wired to real backend calls now:
@@ -162,7 +163,7 @@ class _InvoiceFormState extends State<_InvoiceForm> {
             const SizedBox(height: 12),
             AttachmentField(ownerKind: _savedOwnerKind, ownerId: _savedDocId!),
             const SizedBox(height: 12),
-            FilledButton(
+            GradientButton(
               onPressed: () {
                 Navigator.of(context).pop();
                 widget.onDone();
@@ -237,7 +238,7 @@ class _InvoiceFormState extends State<_InvoiceForm> {
             onSelectionChanged: (s) => setState(() => _method = s.first),
           ),
           const SizedBox(height: 20),
-          FilledButton(
+          GradientButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -351,7 +352,7 @@ class _PartyPaymentFormState extends State<_PartyPaymentForm> {
             const SizedBox(height: 12),
             AttachmentField(ownerKind: 'payment', ownerId: _savedPaymentId!),
             const SizedBox(height: 12),
-            FilledButton(
+            GradientButton(
               onPressed: () {
                 Navigator.of(context).pop();
                 widget.onDone();
@@ -400,7 +401,7 @@ class _PartyPaymentFormState extends State<_PartyPaymentForm> {
             onSelectionChanged: (s) => setState(() => _method = s.first),
           ),
           const SizedBox(height: 20),
-          FilledButton(
+          GradientButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -557,7 +558,7 @@ class _SimpleAmountFormState extends State<_SimpleAmountForm> {
             onSelectionChanged: (s) => setState(() => _method = s.first),
           ),
           const SizedBox(height: 20),
-          FilledButton(
+          GradientButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -643,7 +644,7 @@ class _TransferFormState extends State<_TransferForm> {
             decoration: const InputDecoration(labelText: 'المبلغ', suffixText: 'ج.م', border: OutlineInputBorder()),
           ),
           const SizedBox(height: 20),
-          FilledButton(
+          GradientButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))

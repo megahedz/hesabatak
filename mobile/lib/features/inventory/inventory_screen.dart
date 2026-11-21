@@ -170,7 +170,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                 ],
                 const SizedBox(height: 14),
-                FilledButton(
+                GradientButton(
                   onPressed: saving
                       ? null
                       : () async {
@@ -302,7 +302,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 const Text('لا توجد أصناف بعد',
                                     style: TextStyle(color: AppColors.textSecondary)),
                                 const SizedBox(height: 12),
-                                FilledButton.icon(
+                                GradientButton.icon(
                                   onPressed: _addProduct,
                                   icon: const Icon(Icons.add, size: 18),
                                   label: const Text('إضافة أول صنف'),
@@ -377,7 +377,7 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 12),
-          FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
+          GradientButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
         ],
       ),
     );

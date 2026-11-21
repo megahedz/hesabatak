@@ -185,7 +185,8 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return AppBar(
       centerTitle: true,
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
       foregroundColor: AppColors.navy,
       elevation: 0,
       automaticallyImplyLeading: false,
