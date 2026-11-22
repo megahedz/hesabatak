@@ -416,9 +416,9 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFF4EFFF), Color(0xFFEDF4FC), Color(0xFFE9FBF8)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFE7F3EF), Color(0xFFF4F7F9), Color(0xFFF7FAFB)],
           ),
         ),
         child: SafeArea(
@@ -433,27 +433,60 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Center(child: HesabatakLogo(size: 96)),
-                    const SizedBox(height: 12),
-                    const Text('حساباتك',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.navy)),
-                    const SizedBox(height: 4),
-                    const Text('إدارة أعمالك بسهولة',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                    const SizedBox(height: 6),
-                    // طمأنة صريحة: كلمة المرور مشفرة دائمًا على السيرفر.
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.lock_outline, size: 13, color: AppColors.greenDark),
-                        SizedBox(width: 4),
-                        Text('كلمة المرور محفوظة مشفرة (bcrypt)',
-                            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
-                      ],
+                    // شعار داخل بلاطة بيضاء أنيقة
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: AppShadows.card,
+                        ),
+                        child: const HesabatakLogo(size: 76),
+                      ),
                     ),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: 18),
+                    Text(
+                      _isRegisterMode ? 'أنشئ حسابك' : 'أهلاً بعودتك',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 25,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.6,
+                          color: AppColors.navy),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _isRegisterMode
+                          ? 'دقيقة واحدة وتبدأ في تسجيل حساباتك'
+                          : 'سجّل الدخول لمتابعة حساباتك ومبيعاتك',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13.5, height: 1.5, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 10),
+                    // طمأنة صريحة: كلمة المرور مشفرة دائمًا على السيرفر.
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.greenTint,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.lock_outline_rounded, size: 13, color: AppColors.greenDark),
+                            SizedBox(width: 5),
+                            Text('كلمة المرور محفوظة مشفرة (bcrypt)',
+                                style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.greenDark)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     SectionCard(
                       padding: const EdgeInsets.all(20),
                       child: Column(

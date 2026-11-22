@@ -121,79 +121,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // ===== اختيار الفترة =====
-                GestureDetector(
-                  onTap: _pickPeriod,
-                  child: SectionCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.calendar_month_outlined, size: 18, color: AppColors.primary),
-                            const SizedBox(width: 8),
-                            Text(_periodLabel,
-                                style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.navy)),
-                          ],
-                        ),
-                        const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary),
-                      ],
-                    ),
-                  ),
+                // ===== البطاقة الرئيسية: صافي الربح للفترة =====
+                _PeriodHero(
+                  periodLabel: _periodLabel,
+                  netProfit: data.netProfit,
+                  sales: data.periodSales,
+                  purchases: data.periodPurchases,
+                  expenses: data.periodExpenses,
+                  onTapPeriod: _pickPeriod,
                 ),
-                const SizedBox(height: 14),
-
-                // ===== بطاقات الفترة =====
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatCard(
-                        label: 'إجمالي المبيعات',
-                        value: AppFmt.num(data.periodSales),
-                        icon: Icons.payments_rounded,
-                        background: AppColors.greenTint,
-                        iconColor: AppColors.green,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: StatCard(
-                        label: 'إجمالي المشتريات',
-                        value: AppFmt.num(data.periodPurchases),
-                        icon: Icons.shopping_cart_rounded,
-                        background: AppColors.blueTint,
-                        iconColor: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatCard(
-                        label: 'إجمالي المصروفات',
-                        value: AppFmt.num(data.periodExpenses),
-                        icon: Icons.account_balance_wallet_rounded,
-                        background: AppColors.redTint,
-                        iconColor: AppColors.red,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: StatCard(
-                        label: 'صافي الربح',
-                        value: AppFmt.num(data.netProfit),
-                        icon: Icons.trending_up_rounded,
-                        background: AppColors.amberTint,
-                        iconColor: AppColors.amber,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 20),
 
                 // ===== الأرصدة =====
                 Row(
@@ -243,7 +180,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
 
                 // ===== رسم المبيعات =====
                 SectionCard(
@@ -277,6 +214,145 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
+/// البطاقة الرئيسية في الرئيسية: صافي ربح الفترة بحجم كبير، والفترة
+/// قابلة للتغيير من شريحة داخل البطاقة، وتحتها الأرقام الثلاثة الموجبة/السالبة.
+class _PeriodHero extends StatelessWidget {
+  const _PeriodHero({
+    required this.periodLabel,
+    required this.netProfit,
+    required this.sales,
+    required this.purchases,
+    required this.expenses,
+    required this.onTapPeriod,
+  });
+
+  final String periodLabel;
+  final num netProfit;
+  final num sales;
+  final num purchases;
+  final num expenses;
+  final VoidCallback onTapPeriod;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      decoration: BoxDecoration(
+        gradient: AppGradients.brandGradient,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.28),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('صافي الربح',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white70)),
+              const Spacer(),
+              InkWell(
+                onTap: onTapPeriod,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white.withOpacity(0.18)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.white),
+                      const SizedBox(width: 6),
+                      Text(periodLabel,
+                          style: const TextStyle(
+                              fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                      const SizedBox(width: 2),
+                      const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.white),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              AppFmt.money(netProfit),
+              style: const TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.8,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(height: 1, color: Colors.white.withOpacity(0.14)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _HeroMetric(label: 'المبيعات', value: sales),
+              _heroDivider(),
+              _HeroMetric(label: 'المشتريات', value: purchases),
+              _heroDivider(),
+              _HeroMetric(label: 'المصروفات', value: expenses),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroDivider() => Container(
+        width: 1,
+        height: 26,
+        margin: const EdgeInsets.symmetric(horizontal: 10),
+        color: Colors.white.withOpacity(0.14),
+      );
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({required this.label, required this.value});
+  final String label;
+  final num value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10.5, color: Colors.white.withOpacity(0.7))),
+          const SizedBox(height: 3),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              AppFmt.num(value),
+              style: const TextStyle(
+                  fontSize: 14.5, fontWeight: FontWeight.w800, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _QuickActionsGrid extends StatelessWidget {
   const _QuickActionsGrid({required this.onDone});
   final VoidCallback onDone;
@@ -285,13 +361,13 @@ class _QuickActionsGrid extends StatelessWidget {
   // (label, icon, bg, fg) — parallel lists بدل records لتفادي أي اختلاف إصدار.
   static const _labels = ['بيع', 'شراء', 'قبض من عميل', 'دفع لمورد', 'مصروف', 'إيداع رأس مال', 'سحب شخصي', 'تحويل بين الحسابات'];
   static const _icons = [
-    Icons.point_of_sale_rounded,
-    Icons.shopping_cart_rounded,
-    Icons.north_rounded,
-    Icons.south_rounded,
-    Icons.receipt_long_rounded,
-    Icons.add_business_rounded,
-    Icons.person_remove_rounded,
+    Icons.point_of_sale_outlined,
+    Icons.shopping_bag_outlined,
+    Icons.call_received_rounded,
+    Icons.call_made_rounded,
+    Icons.request_quote_outlined,
+    Icons.account_balance_wallet_outlined,
+    Icons.person_remove_outlined,
     Icons.swap_horiz_rounded,
   ];
   static const _bgs = [
@@ -305,7 +381,7 @@ class _QuickActionsGrid extends StatelessWidget {
     AppColors.blueTint,
   ];
   static const _fgs = [
-    AppColors.green,
+    AppColors.greenDark,
     AppColors.primary,
     AppColors.teal,
     AppColors.amber,
@@ -343,7 +419,8 @@ class _QuickActionsGrid extends StatelessWidget {
                   Text(_labels[i],
                       textAlign: TextAlign.center,
                       maxLines: 2,
-                      style: const TextStyle(fontSize: 10.5, color: AppColors.navy)),
+                      style: const TextStyle(
+                          fontSize: 11, height: 1.3, fontWeight: FontWeight.w600, color: AppColors.navy)),
                 ],
               ),
             ),

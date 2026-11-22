@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show NumberFormat;
 import '../core/app_config.dart';
 import 'theme.dart';
-import '../../ui/widgets.dart';
 
 /// تنسيق الأرقام بفواصل الآلاف وأرقام لاتينية (كما في التصميم المرجعي).
 class AppFmt {
@@ -76,7 +75,7 @@ class _GradientButtonState extends State<GradientButton> {
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null && !widget.loading;
-    final radius = widget.compact ? 13.0 : 16.0;
+    final radius = widget.compact ? 12.0 : 14.0;
 
     // Wrap بدل Row: لا يحتاج عرضًا محددًا (يعمل داخل نوافذ الحوار والصفوف
     // والأعمدة الممتدة على حد سواء) ويلف النص الطويل بدل أن يفيض.
@@ -112,43 +111,62 @@ class _GradientButtonState extends State<GradientButton> {
       ],
     );
 
-    Widget body = Container(
-      padding: const EdgeInsets.all(2.5),
+    // سطح واحد متدرّج بلون غامق كفاية (زمردي): الأبيض عليه 4.6:1 أو أفضل،
+    // فما احتجاناش لطبقة كحلية داخلية. التفاعل يظهر بطبقة بيضاء 8% عند الهوفر
+    // وبطبقة داكنة 12% مع تصغير خفيف عند الضغط — بدون أي تغيير في التباين.
+    Widget body = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      constraints: BoxConstraints(minHeight: widget.height),
+      padding: EdgeInsets.symmetric(
+        horizontal: widget.compact ? 16 : 22,
+        vertical: widget.compact ? 4 : 8,
+      ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: widget.colors,
+          begin: Alignment.centerRight,
+          end: Alignment.centerLeft,
+          colors: _pressed && enabled
+              ? widget.colors.map((c) => Color.lerp(c, Colors.black, 0.12)!).toList()
+              : widget.colors,
         ),
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: widget.colors == AppGradients.button ? AppGradients.buttonGlow : null,
+        boxShadow: widget.colors == AppGradients.button && enabled
+            ? AppGradients.buttonGlow
+            : null,
       ),
-      // عند الهوفر/الضغط يظهر التدرّج كاملًا لكن خلف طبقة كحلية شبه شفافة،
-      // لأن النص أبيض: سيان #00DDEB خالصًا يعطي تباينًا ~1.6:1 (غير مقروء).
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-        constraints: BoxConstraints(minHeight: widget.height),
-        padding: EdgeInsets.symmetric(
-          horizontal: widget.compact ? 14 : 20,
-          vertical: widget.compact ? 0 : 6,
+      // Center بعوامل 1 يلفّ المحتوى بحجمه الطبيعي (بدل التمدد لعرض الحاوية)
+      // مع توسيطه رأسيًا داخل minHeight — فأزرار الحوار تبقى بعرض نصّها لا
+      // بعرض النافذة، والأزرار الممتدة يحددها expand.
+      child: Center(
+        widthFactor: 1,
+        heightFactor: 1,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _hover && enabled ? 1 : 0,
+                  duration: const Duration(milliseconds: 160),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(radius),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            content,
+          ],
         ),
-        decoration: BoxDecoration(
-          color: (_hover || _pressed) && enabled
-              ? AppColors.ink.withOpacity(0.55)
-              : AppColors.ink,
-          borderRadius: BorderRadius.circular(radius - 2.5),
-        ),
-        // Center بعوامل 1 يلفّ المحتوى بحجمه الطبيعي (بدل التمدد لعرض الحاوية)
-        // مع توسيطه رأسيًا داخل minHeight — فأزرار الحوار تبقى بعرض نصّها لا
-        // بعرض النافذة، والأزرار الممتدة يحددها expand.
-        child: Center(widthFactor: 1, heightFactor: 1, child: content),
       ),
     );
 
     body = AnimatedScale(
-      scale: _pressed ? 0.94 : 1,
-      duration: const Duration(milliseconds: 120),
+      scale: _pressed ? 0.98 : 1,
+      duration: const Duration(milliseconds: 110),
       // التحميل يخفض الشفافية قليلًا فقط: النص «جارٍ تسجيل الدخول…» يبقى مقروءًا.
       child: Opacity(
         opacity: enabled ? 1 : (widget.loading ? 0.9 : 0.5),
@@ -182,37 +200,104 @@ class _GradientButtonState extends State<GradientButton> {
   }
 }
 
-/// شعار حساباتك — ملف الأيقونة الرسمي نفسه (assets/icon/icon.png)،
-/// فيطابق أيقونة التطبيق على الشاشة الرئيسية تطابقًا تامًا في كل الشاشات.
+/// شعار حساباتك — نفس علامة أيقونة التطبيق، مرسومة مباشرة بـ Canvas بدل
+/// تحميل صورة: يطابق الأيقونة تمامًا، ولا يتعلق ظهوره بتحميل/فكّ ضغط صورة
+/// (كان يظهر مربّعًا أبيض على بعض المتصفحات).
 class HesabatakLogo extends StatelessWidget {
   const HesabatakLogo({super.key, this.size = 64});
   final double size;
 
   @override
   Widget build(BuildContext context) {
+    final radius = size * 0.26;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * 0.22),
+        borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           BoxShadow(
-            color: AppColors.navy.withOpacity(0.10),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
+            color: AppColors.navy.withOpacity(0.18),
+            blurRadius: size * 0.22,
+            offset: Offset(0, size * 0.07),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(size * 0.22),
-        child: Image.asset(
-          'assets/icon/icon.png',
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.medium,
-        ),
+        borderRadius: BorderRadius.circular(radius),
+        child: CustomPaint(size: Size.square(size), painter: _LogoPainter(radius)),
       ),
     );
   }
+}
+
+class _LogoPainter extends CustomPainter {
+  _LogoPainter(this.radius);
+  final double radius;
+
+  // الرسم موصوف على شبكة 1024 ثم يُقاس على المقاس المطلوب.
+  static const double _grid = 1024;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / _grid;
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0A2540), Color(0xFF0D4E5A), Color(0xFF0E7C6B)],
+        ).createShader(rect),
+    );
+    canvas.save();
+    canvas.clipRRect(rrect);
+
+    // الأعمدة الصاعدة
+    const barW = 126.0, gap = 58.0, baseY = 752.0;
+    const heights = [240.0, 386.0, 526.0];
+    const opacities = [0.59, 0.80, 0.96];
+    final groupLeft = (_grid - (3 * barW + 2 * gap)) / 2;
+    for (var i = 0; i < 3; i++) {
+      final left = (groupLeft + i * (barW + gap)) * s;
+      final top = (baseY - heights[i]) * s;
+      final bar = RRect.fromRectAndRadius(
+        Rect.fromLTRB(left, top, left + barW * s, baseY * s),
+        Radius.circular(34 * s),
+      );
+      canvas.drawRRect(bar, Paint()..color = Colors.white.withOpacity(opacities[i]));
+    }
+
+    // سهم النمو
+    final start = Offset(238 * s, 556 * s);
+    final end = Offset(792 * s, 296 * s);
+    final arrow = Paint()
+      ..color = const Color(0xFF7FE9C3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 56 * s
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(start, end, arrow);
+
+    final dir = end - start;
+    final len = dir.distance;
+    final u = dir / len;
+    final perp = Offset(-u.dy, u.dx);
+    final headLen = 150 * s, headHalf = 108 * s;
+    final head = Path()
+      ..moveTo(end.dx + u.dx * 6 * s, end.dy + u.dy * 6 * s)
+      ..lineTo(end.dx - u.dx * headLen + perp.dx * headHalf, end.dy - u.dy * headLen + perp.dy * headHalf)
+      ..lineTo(end.dx - u.dx * headLen - perp.dx * headHalf, end.dy - u.dy * headLen - perp.dy * headHalf)
+      ..close();
+    canvas.drawPath(head, Paint()..color = const Color(0xFF7FE9C3));
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _LogoPainter old) => old.radius != radius;
 }
 
 /// أيقونة داخل مربع ملون (نظام الأيقونات الموحد بالمرجع).
@@ -239,8 +324,9 @@ class IconTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: color.withOpacity(0.10), width: 1),
       ),
-      child: Icon(icon, color: color, size: size * 0.52),
+      child: Icon(icon, color: color, size: size * 0.50),
     );
   }
 }
@@ -264,39 +350,22 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // بطاقة بيضاء نظيفة: اللون يبقى في بلاطة الأيقونة فقط، فيظل الجدول الرقمي
+    // هادئًا وقروءًا، ويُقرأ الرقم قبل الزينة.
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(13, 13, 13, 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: [background, Color.lerp(background, Colors.white, 0.85)!],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white, width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.navy.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.soft,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.75),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Icon(icon, size: 17, color: iconColor),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
@@ -304,23 +373,26 @@ class StatCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 11.5,
-                    height: 1.25,
+                    height: 1.3,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textSecondary,
                   ),
                 ),
               ),
+              const SizedBox(width: 6),
+              IconTile(icon: icon, background: background, color: iconColor, size: 32, radius: 10),
             ],
           ),
-          const Spacer(),
+          const SizedBox(height: 12),
           FittedBox(
             fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
             child: Text(
               value,
               style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.4,
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
                 color: AppColors.navy,
               ),
             ),
@@ -340,13 +412,21 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 4, bottom: 10),
+      padding: const EdgeInsets.only(top: 2, bottom: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title,
+          Flexible(
+            child: Text(
+              title,
               style: const TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+                color: AppColors.navy,
+              ),
+            ),
+          ),
           if (trailing != null) trailing!,
         ],
       ),
@@ -364,18 +444,12 @@ class SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: padding ?? const EdgeInsets.all(14),
+      padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border.withOpacity(0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.navy.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.card,
       ),
       child: child,
     );
@@ -520,13 +594,13 @@ class AppListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
         child: Row(
           children: [
-            IconTile(icon: icon, background: AppColors.blueTint, color: AppColors.primary, size: 42),
+            IconTile(icon: icon, background: AppColors.greenTint, color: AppColors.primary, size: 40, radius: 12),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -556,8 +630,8 @@ class AppListTile extends StatelessWidget {
               ),
             ],
             if (trailingChevron) ...[
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_left, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_left_rounded, size: 20, color: AppColors.textSecondary),
             ],
           ],
         ),
@@ -656,60 +730,90 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       // In RTL the drawer opens from the end (visually left), so the rounded
       // edge faces the screen's left side and the hinge stays flat.
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.horizontal(left: Radius.circular(20)),
+        borderRadius: BorderRadius.horizontal(left: Radius.circular(AppRadius.xl)),
       ),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // ===== هوية المشروع =====
             Container(
-              margin: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+              margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
               decoration: BoxDecoration(
                 gradient: AppGradients.brandGradient,
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.navy.withOpacity(0.22),
-                    blurRadius: 22,
+                    color: AppColors.primary.withOpacity(0.24),
+                    blurRadius: 24,
                     offset: const Offset(0, 10),
                   ),
                 ],
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const HesabatakLogo(size: 44),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text('حساباتك',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Colors.white)),
+                  Row(
+                    children: [
+                      const HesabatakLogo(size: 42),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('حساباتك',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+                            const SizedBox(height: 2),
+                            Text(
+                              companyName.isEmpty ? 'حسابات مشروعك' : companyName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11.5, color: Colors.white.withOpacity(0.78)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(11),
-                      border: Border.all(color: Colors.white.withOpacity(0.25)),
-                    ),
-                    child: Text(
-                      'v${AppConfig.appVersion}',
-                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white),
-                    ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'إصدار ${AppConfig.appVersion}',
+                          style: const TextStyle(
+                              fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(userName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white.withOpacity(0.9))),
+                    ],
                   ),
                 ],
               ),
             ),
-            const Divider(),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
                 children: [
                   for (final (title, icon) in sections)
                     _DrawerItem(
@@ -725,19 +829,34 @@ class AppDrawer extends StatelessWidget {
                 ],
               ),
             ),
-            const Divider(),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: AppColors.blueTint,
-                child: Icon(Icons.person, color: AppColors.primary),
-              ),
-              title: Text(userName,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
-              subtitle: Text(companyName, style: const TextStyle(fontSize: 12)),
-              trailing: IconButton(
-                tooltip: 'تسجيل الخروج',
-                icon: const Icon(Icons.logout, color: AppColors.red),
-                onPressed: onLogout,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: ListTile(
+                  dense: true,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+                  leading: const CircleAvatar(
+                    radius: 17,
+                    backgroundColor: AppColors.greenTint,
+                    child: Icon(Icons.person_outline_rounded, size: 19, color: AppColors.primary),
+                  ),
+                  title: Text(userName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                  subtitle: const Text('تسجيل الخروج من الحساب', style: TextStyle(fontSize: 11)),
+                  trailing: IconButton(
+                    tooltip: 'تسجيل الخروج',
+                    icon: const Icon(Icons.logout_rounded, size: 19, color: AppColors.red),
+                    onPressed: onLogout,
+                  ),
+                  onTap: onLogout,
+                ),
               ),
             ),
           ],
@@ -764,24 +883,50 @@ class _DrawerItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2),
+      margin: const EdgeInsets.symmetric(vertical: 1.5),
       decoration: BoxDecoration(
-        color: active ? AppColors.blueTint : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        color: active ? AppColors.greenTint : Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
-      child: ListTile(
-        dense: true,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        leading: Icon(icon, color: color),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-            color: active ? AppColors.primary : AppColors.navy,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+          child: Row(
+            children: [
+              IconTile(
+                icon: icon,
+                background: active ? Colors.white : color.withOpacity(0.10),
+                color: color,
+                size: 34,
+                radius: 10,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                    color: active ? AppColors.primary : AppColors.navy,
+                  ),
+                ),
+              ),
+              if (active)
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ],
           ),
         ),
-        onTap: onTap,
       ),
     );
   }
@@ -789,25 +934,27 @@ class _DrawerItem extends StatelessWidget {
 
 /// لون كل قسم في القائمة الجانبية (نظام الأيقونات الملون).
 Color _colorFor(String section) {
+  // لون واحد لكل مجموعة منطقية: أموال داخلة (أخضر)، خارجة (أحمر)،
+  // أطراف (أزرق/بنفسجي)، وبنية تحتية (رمادي) — بدل عشوائية الألوان.
   switch (section) {
     case 'الرئيسية':
       return AppColors.primary;
     case 'المبيعات':
-      return AppColors.amber;
+      return AppColors.greenDark;
     case 'المشتريات':
-      return AppColors.teal;
+      return AppColors.purple;
     case 'المصروفات':
       return AppColors.red;
     case 'العملاء':
-      return AppColors.primary;
+      return const Color(0xFF1E6FD9);
     case 'الموردون':
-      return AppColors.amber;
+      return AppColors.purple;
     case 'الأصناف':
       return AppColors.amber;
     case 'الخزنة والبنك':
-      return AppColors.primary;
+      return const Color(0xFF1E6FD9);
     case 'الأصول الثابتة':
-      return AppColors.green;
+      return AppColors.teal;
     case 'التقارير':
       return AppColors.primary;
     case 'الإعدادات':

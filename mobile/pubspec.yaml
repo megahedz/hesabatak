@@ -1,7 +1,7 @@
 name: hesabatak
 description: "حساباتك - حسابات مشروعك ببساطة"
 publish_to: 'none'
-version: 0.7.13+20
+version: 0.8.0+21
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -50,3 +50,18 @@ flutter:
   assets:
     - assets/icon/icon.png
     - assets/icon/icon_foreground.png
+  # الخط العربي مضمّن مع التطبيق: على الويب لا يوجد خط عربي افتراضي
+  # (النص كان يظهر مربّعات) وعلى أندرويد يضمن نفس الشكل على كل جهاز.
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/cairo-v31-arabic_latin-regular.ttf
+          weight: 400
+        - asset: assets/fonts/cairo-v31-arabic_latin-600.ttf
+          weight: 600
+        - asset: assets/fonts/cairo-v31-arabic_latin-700.ttf
+          weight: 700
+        - asset: assets/fonts/cairo-v31-arabic_latin-700.ttf
+          weight: 800
+        - asset: assets/fonts/cairo-v31-arabic_latin-700.ttf
+          weight: 900

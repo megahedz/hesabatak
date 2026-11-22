@@ -24,18 +24,20 @@ class HomeShell extends StatefulWidget {
   /// تعمل من داخل Scaffolds متداخلة (كل شاشة لها Scaffold خاص بها).
   static final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
+  // مجموعة أيقونات خطّية واحدة (outlined) بنفس الوزن البصري — لا خلط بين
+  // الممتلئ والخطّي كما كان سابقًا.
   static const sections = <(String, IconData)>[
-    ('الرئيسية', Icons.home_rounded),
-    ('المبيعات', Icons.receipt_long_rounded),
-    ('المشتريات', Icons.shopping_cart_rounded),
-    ('المصروفات', Icons.account_balance_wallet_rounded),
-    ('العملاء', Icons.people_alt_rounded),
-    ('الموردون', Icons.storefront_rounded),
-    ('الأصناف', Icons.inventory_2_rounded),
-    ('الخزنة والبنك', Icons.savings_rounded),
-    ('الأصول الثابتة', Icons.domain_rounded),
-    ('التقارير', Icons.bar_chart_rounded),
-    ('الإعدادات', Icons.settings_rounded),
+    ('الرئيسية', Icons.space_dashboard_outlined),
+    ('المبيعات', Icons.receipt_long_outlined),
+    ('المشتريات', Icons.shopping_bag_outlined),
+    ('المصروفات', Icons.payments_outlined),
+    ('العملاء', Icons.groups_outlined),
+    ('الموردون', Icons.local_shipping_outlined),
+    ('الأصناف', Icons.inventory_2_outlined),
+    ('الخزنة والبنك', Icons.account_balance_outlined),
+    ('الأصول الثابتة', Icons.apartment_outlined),
+    ('التقارير', Icons.insights_outlined),
+    ('الإعدادات', Icons.settings_outlined),
   ];
 
   /// يُطلق بعد نجاح أي عملية سريعة حتى تعيد الشاشة الظاهرة تحميل بياناتها
@@ -185,36 +187,55 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return AppBar(
       centerTitle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       surfaceTintColor: Colors.transparent,
       foregroundColor: AppColors.navy,
       elevation: 0,
+      scrolledUnderElevation: 0,
       automaticallyImplyLeading: false,
+      leadingWidth: 58,
+      // حدّ سفلي رفيع بدل الظل: الشريط يلتصق بالمحتوى بدون فاصل بصري ثقيل.
+      shape: const Border(bottom: BorderSide(color: AppColors.border)),
       leading: showMenu
-          ? IconButton(
-              tooltip: 'القائمة الجانبية',
-              icon: const Icon(Icons.menu, color: AppColors.navy),
-              onPressed: () {
-                final root = HomeShell.scaffoldKey.currentState;
-                if (root == null || !root.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('القائمة الجانبية غير متاحة هنا')),
-                  );
-                  return;
-                }
-                root.openDrawer();
-              },
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(8, 9, 0, 9),
+              child: IconButton(
+                tooltip: 'القائمة الجانبية',
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.background,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xs)),
+                ),
+                icon: const Icon(Icons.menu_rounded, size: 20, color: AppColors.navy),
+                onPressed: () {
+                  final root = HomeShell.scaffoldKey.currentState;
+                  if (root == null || !root.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('القائمة الجانبية غير متاحة هنا')),
+                    );
+                    return;
+                  }
+                  root.openDrawer();
+                },
+              ),
             )
           : const BackButton(),
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (title == 'حساباتك') ...[
-            const HesabatakLogo(size: 30),
+            const HesabatakLogo(size: 26),
             const SizedBox(width: 8),
           ],
-          Text(title ?? '',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.navy)),
+          Flexible(
+            child: Text(title ?? '',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                    color: AppColors.navy)),
+          ),
         ],
       ),
       actions: actions,

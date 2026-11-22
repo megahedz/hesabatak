@@ -1,81 +1,87 @@
 import 'package:flutter/material.dart';
 
-/// حساباتك design system — مستوحى من التصميم المرجعي:
-/// خلفية فاتحة، بطاقات بيضاء بحواف دائرية وظلال ناعمة، أزرق/كحلي أساسي،
-/// وأخضر/تركوازي كلون ثانوي — مع لمسات التدرّج العصري (بنفسجي→أزرق→سيان)
-/// في الأزرار والعناوين البارزة.
+/// حساباتك design system — v2 «دفتر هادئ».
+///
+/// الاتجاه: محاسبة هادئة وواضحة. مساحات بيضاء واسعة، أخضر زمردي غامق كلون
+/// أساسي (أرقام مالية مقروءة على الأبيض)، كحلي داكن للنصوص، وأيقونات خطية
+/// موحّدة داخل بلاطات ناعمة. لا تدرّجات نيون ولا ظلال ثقيلة: التمييز يأتي من
+/// المساحة والوزن الطباعي، لا من الألوان الصاخبة.
 class AppColors {
   AppColors._();
 
-  /// الأزرق الأساسي (الأزرار والتحديد) — مستوحى من الكحلي المضيء في اللوجو
-  static const Color primary = Color(0xFF1A5C9E);
+  /// الأخضر الزمردي الأساسي — الأزرار والتحديد والعناصر النشطة.
+  static const Color primary = Color(0xFF0E7C6B);
 
-  /// الكحلي للعناوين — نفس كحلي حرف M في اللوجو
-  static const Color navy = Color(0xFF123A66);
+  /// كحلي العناوين والنصوص الأساسية.
+  static const Color navy = Color(0xFF0A2540);
 
-  /// كحلي داكن جدًا (داخل الأزرار المتدرّجة) — rgb(5, 6, 45)
-  static const Color ink = Color(0xFF05062D);
+  /// الكحلي الأغمق (خلفيات داكنة، SnackBar).
+  static const Color ink = Color(0xFF071A2B);
 
-  /// التركوازي (أيقونات ولمسات) — درجة السيان/التركوازي في اللوجو
-  static const Color teal = Color(0xFF25B7A8);
+  /// التركوازي (لمسات ثانوية).
+  static const Color teal = Color(0xFF12A594);
 
-  /// الأخضر (رصيد، أرباح، نجاح) — أخضر سهم النمو في اللوجو
-  static const Color green = Color(0xFF35D89A);
+  /// الأخضر الفاتح (مؤشرات إيجابية على خلفية داكنة).
+  static const Color green = Color(0xFF12B76A);
 
-  /// أخضر داكن للنصوص فوق الخلفيات الفاتحة (تباين أعلى من green)
-  static const Color greenDark = Color(0xFF1E9E6A);
+  /// الأخضر الغامق — للنصوص فوق الخلفيات الفاتحة (تباين أعلى).
+  static const Color greenDark = Color(0xFF067647);
 
-  /// الأحمر (مصروفات، أرصدة مستحقة)
-  static const Color red = Color(0xFFE05252);
+  /// الأحمر (مصروفات، أرصدة مستحقة، أفعال خطرة).
+  static const Color red = Color(0xFFD92D20);
 
-  /// البرتقالي (تحذيرات، أسهم صاعدة)
-  static const Color amber = Color(0xFFF2A93B);
+  /// البرتقالي (تحذيرات).
+  static const Color amber = Color(0xFFC77700);
 
-  /// البنفسجي (بطاقات أصول/مصروفات)
-  static const Color purple = Color(0xFF6D5BD0);
+  /// البنفسجي (أصول/تصنيفات ثانوية).
+  static const Color purple = Color(0xFF6941C6);
 
-  /// خلفية الشاشة العامة
-  static const Color background = Color(0xFFF6F9FD);
+  /// خلفية الشاشات.
+  static const Color background = Color(0xFFF4F7F9);
 
-  /// خلفيات البطاقات الملونة (tinted cards)
-  static const Color blueTint = Color(0xFFE3F0FC);
-  static const Color greenTint = Color(0xFFE2F5EB);
-  static const Color redTint = Color(0xFFFDE8E8);
-  static const Color amberTint = Color(0xFFFFF1DD);
-  static const Color purpleTint = Color(0xFFEEEAFC);
-  static const Color tealTint = Color(0xFFDFF4F4);
-  static const Color greyTint = Color(0xFFEFF3F8);
+  /// سطح البطاقات (أبيض نقي ليطفو على الخلفية الرمادية).
+  static const Color surface = Colors.white;
 
-  /// نصوص ثانوية
-  static const Color textSecondary = Color(0xFF5A6B7E);
+  /// تدرّجات باهتة للأيقونات والشرائح.
+  static const Color blueTint = Color(0xFFE8F1FA);
+  static const Color greenTint = Color(0xFFE4F7EE);
+  static const Color redTint = Color(0xFFFDECEA);
+  static const Color amberTint = Color(0xFFFDF2E2);
+  static const Color purpleTint = Color(0xFFEFEBFB);
+  static const Color tealTint = Color(0xFFE2F6F3);
+  static const Color greyTint = Color(0xFFEFF3F7);
 
-  /// حدود الحقول والجداول
-  static const Color border = Color(0xFFE3EAF3);
+  /// نصوص ثانوية.
+  static const Color textSecondary = Color(0xFF55677A);
+
+  /// حدود الحقول والجداول.
+  static const Color border = Color(0xFFE3E9F0);
+
+  /// حدّ أثقل قليلًا للفواصل داخل الجداول.
+  static const Color borderStrong = Color(0xFFD3DCE6);
 }
 
-/// تدرّجات الهوية — نقطة واحدة لكل تدرّج في التطبيق.
+/// تدرّجات الهوية — مصدر واحد لكل تدرّج في التطبيق.
 class AppGradients {
   AppGradients._();
 
-  /// تدرّج الأزرار العصري: بنفسجي → أزرق → سيان (Uiverse cssbuttons-io).
+  /// زر أساسي: زمردي غامق → زمردي متوسط (الأبيض عليه مقروء دائمًا).
   static const List<Color> button = [
-    Color(0xFFAF40FF),
-    Color(0xFF5B42F3),
-    Color(0xFF00DDEB),
+    Color(0xFF0B5F53),
+    Color(0xFF0E8A76),
   ];
 
-  /// تدرّج أحمر للأفعال الخطرة (حذف/إزالة).
+  /// أحمر للأفعال الخطرة (حذف/إزالة).
   static const List<Color> danger = [
-    Color(0xFFFF7A7A),
-    Color(0xFFE05252),
-    Color(0xFFB3123F),
+    Color(0xFFD92D20),
+    Color(0xFFB42318),
   ];
 
-  /// تدرّج الهوية الكحلي→الأزرق→التركوازي (ترويسات وخلفيات).
+  /// الهوية: كحلي → تركوازي (لوحة الدرج، البطاقة الرئيسية).
   static const List<Color> brand = [
-    Color(0xFF123A66),
-    Color(0xFF1A5C9E),
-    Color(0xFF25B7A8),
+    Color(0xFF0A2540),
+    Color(0xFF0D4E5A),
+    Color(0xFF0E7C6B),
   ];
 
   static const LinearGradient buttonGradient = LinearGradient(
@@ -90,73 +96,129 @@ class AppGradients {
     colors: brand,
   );
 
-  /// لمعان بنفسجي خفيف تحت الأزرار المتدرّجة.
+  /// ظل خفيف تحت الزر الأساسي (زمردي، شفافية منخفضة).
   static List<BoxShadow> buttonGlow = [
     BoxShadow(
-      color: const Color(0xFF9741FC).withOpacity(0.20),
-      blurRadius: 28,
-      offset: const Offset(0, 14),
+      color: const Color(0xFF0E7C6B).withOpacity(0.22),
+      blurRadius: 22,
+      offset: const Offset(0, 10),
     ),
   ];
+}
+
+/// مقاسات موحّدة — تُستخدم بدل الأرقام المتناثرة.
+class AppRadius {
+  AppRadius._();
+  static const double xs = 10;
+  static const double sm = 14;
+  static const double md = 18;
+  static const double lg = 22;
+  static const double xl = 28;
+}
+
+class AppSpace {
+  AppSpace._();
+  static const double xs = 6;
+  static const double sm = 10;
+  static const double md = 14;
+  static const double lg = 18;
+  static const double xl = 24;
+}
+
+/// ظلال ناعمة باردة (بدل الأسود/الكحلي القوي).
+class AppShadows {
+  AppShadows._();
+
+  static List<BoxShadow> get card => [
+        BoxShadow(
+          color: const Color(0xFF0A2540).withOpacity(0.05),
+          blurRadius: 20,
+          offset: const Offset(0, 8),
+        ),
+      ];
+
+  static List<BoxShadow> get soft => [
+        BoxShadow(
+          color: const Color(0xFF0A2540).withOpacity(0.035),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
+        ),
+      ];
 }
 
 /// ثيم التطبيق الموحد — كل الشاشات تستخدمه تلقائيًا.
 class AppTheme {
   AppTheme._();
 
+  /// محاذاة النصوص: عربي/RTL مع كحلي داكن.
+  static const TextStyle _title = TextStyle(
+    color: AppColors.navy,
+    fontSize: 18,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -0.2,
+    height: 1.25,
+  );
+
   static ThemeData get light {
     final base = ThemeData(
       useMaterial3: true,
+      // خط عربي مضمّن (Cairo) بدل الاعتماد على خط النظام: يضمن نفس الشكل على
+      // أندرويد والويب، ويمنع ظهور النص مربّعات على المتصفح.
+      fontFamily: 'Cairo',
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.light,
       ).copyWith(
         primary: AppColors.primary,
         secondary: AppColors.teal,
-        surface: Colors.white,
+        surface: AppColors.surface,
+        error: AppColors.red,
+        onSurface: AppColors.navy,
       ),
       scaffoldBackgroundColor: AppColors.background,
+      iconTheme: const IconThemeData(color: AppColors.navy, size: 22),
       appBarTheme: const AppBarTheme(
         centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
         foregroundColor: AppColors.navy,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
-        ),
-        titleTextStyle: TextStyle(
-          color: AppColors.navy,
-          fontSize: 19,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.2,
-        ),
+        iconTheme: IconThemeData(color: AppColors.navy, size: 22),
+        titleTextStyle: _title,
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: Colors.white,
+        color: AppColors.surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
         margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        fillColor: AppColors.surface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        prefixIconColor: AppColors.textSecondary,
+        suffixIconColor: AppColors.textSecondary,
+        labelStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+        floatingLabelStyle: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: const BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: const BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.6),
         ),
-        hintStyle: const TextStyle(color: AppColors.textSecondary),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.red),
+        ),
+        hintStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13.5),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -165,56 +227,50 @@ class AppTheme {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           minimumSize: const Size(0, 52),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          textStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
+          foregroundColor: AppColors.navy,
           minimumSize: const Size(0, 50),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           side: const BorderSide(color: AppColors.border, width: 1.2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+          textStyle: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.primary,
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xs)),
         ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        titleTextStyle: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: AppColors.navy,
-        ),
-        contentTextStyle: const TextStyle(
-          fontSize: 14,
-          height: 1.5,
-          color: AppColors.textSecondary,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+        titleTextStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.navy),
+        contentTextStyle: const TextStyle(fontSize: 14, height: 1.6, color: AppColors.textSecondary),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+        showDragHandle: true,
+        dragHandleColor: AppColors.borderStrong,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: AppColors.blueTint,
+        indicatorColor: AppColors.greenTint,
         elevation: 0,
         labelTextStyle: const WidgetStatePropertyAll(
           TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.navy),
@@ -222,18 +278,18 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.greyTint,
-        selectedColor: AppColors.blueTint,
+        selectedColor: AppColors.greenTint,
         side: BorderSide.none,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xs)),
         labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy),
       ),
       tabBarTheme: TabBarThemeData(
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
         indicator: BoxDecoration(
-          color: AppColors.blueTint,
-          borderRadius: BorderRadius.circular(14),
+          color: AppColors.greenTint,
+          borderRadius: BorderRadius.circular(AppRadius.xs),
         ),
         labelColor: AppColors.primary,
         unselectedLabelColor: AppColors.textSecondary,
@@ -242,22 +298,44 @@ class AppTheme {
       ),
       checkboxTheme: CheckboxThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-        side: const BorderSide(color: AppColors.border, width: 1.4),
+        side: const BorderSide(color: AppColors.borderStrong, width: 1.4),
+        fillColor: const WidgetStatePropertyAll(AppColors.primary),
       ),
-      dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1),
+      radioTheme: const RadioThemeData(
+        fillColor: WidgetStatePropertyAll(AppColors.primary),
+      ),
+      dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1, space: 1),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.ink,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        contentTextStyle: const TextStyle(fontSize: 13.5, color: Colors.white),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        contentTextStyle: const TextStyle(fontSize: 13.5, color: Colors.white, height: 1.4),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: AppColors.primary,
-        linearTrackColor: AppColors.border,
+        linearTrackColor: AppColors.greyTint,
       ),
       listTileTheme: const ListTileThemeData(
         iconColor: AppColors.navy,
         textColor: AppColors.navy,
+        titleTextStyle: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.navy),
+        subtitleTextStyle: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+      ),
+      drawerTheme: const DrawerThemeData(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        width: 288,
+      ),
+      sliderTheme: const SliderThemeData(
+        activeTrackColor: AppColors.primary,
+        thumbColor: AppColors.primary,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: const WidgetStatePropertyAll(Colors.white),
+        trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? AppColors.primary : AppColors.borderStrong,
+        ),
       ),
     );
     return base;
