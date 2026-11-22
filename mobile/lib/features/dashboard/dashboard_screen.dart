@@ -52,6 +52,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _reload() => _load();
 
+  /// على الشاشة العريضة نحدّ عرض المحتوى ونوسّطه (الهامش الجانبي يكبر وحده)
+  /// بدل أن تتمدد البطاقات على عرض 1440+ فيسبح الرقم في فراغ عريض.
+  static double _sideInset(BuildContext context) {
+    const maxContentWidth = 1120.0;
+    final width = MediaQuery.sizeOf(context).width;
+    return width > maxContentWidth ? (width - maxContentWidth) / 2 : 0.0;
+  }
+
   Future<void> _pickPeriod() async {
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -119,7 +127,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onRefresh: () async => _reload(),
             color: AppColors.primary,
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.symmetric(horizontal: 16 + _sideInset(context), vertical: 16),
               children: [
                 // ===== البطاقة الرئيسية: صافي الربح للفترة =====
                 _PeriodHero(
